@@ -317,13 +317,24 @@ once a station has more than one month of history.
 |---|---|---|---|
 | Today's min/max temperature, with timestamps | Extremes since local midnight | with device id | yes |
 | Today's max gust | Maximum of the gust series | with device id | yes |
+| The day's average wind | Mean of the wind series | with device id | — |
 | Peak sun hours | Trapezoidal integration of irradiance, in kWh/m² | with device id | yes |
-| 24 hour difference | Now minus the nearest sample 24 hours back | — | yes |
-| Hourly trend | Now minus the nearest sample an hour back | — | yes |
-| Barometer's daily low and high | Extremes since midnight | — | yes |
-| Pressure trend and verdict | Rate of change over three hours | API's own flag | computed |
+| 24 hour difference | Now minus the nearest sample 24 hours back | with device id | yes |
+| Hourly trend | Now minus the nearest sample an hour back | with device id | yes |
+| Barometer's daily low and high | Extremes since midnight, corrected to sea level | with device id | yes |
+| Pressure rate | Change over three hours | with device id | computed |
+| Dew point | Magnus formula from temperature and humidity | yes | from the entity |
+| Feels like | NWS heat index above 80 °F, wind chill below 50 °F | yes | from the entity |
 | Wind dial scale | Rounded up from the day's max gust | yes | yes |
 | Moon phase | Synodic month from a known new moon | yes | yes |
+
+Dew point and feels-like are computed rather than read because `better_forecast`
+rounds them to whole degrees, which would peg the console's tenth digit at zero.
+
+Device observations report **station** pressure, while the dial shows sea level.
+The gap between the two is fixed by the station's elevation — about 1.7 inHg at
+1,600 feet — so the source takes today's offset from the pair the observation
+endpoint reports and applies it to the day's extremes.
 
 On the HA source, the recorder must be keeping those entities. If you have
 `exclude`d them, the affected figures show a dash and everything else carries

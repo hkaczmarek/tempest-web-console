@@ -144,9 +144,12 @@ img { max-width: 100%; }
   .read { font-weight: 200; line-height: 0.95; white-space: nowrap; }
   .read .whole { font-size: var(--size, calc(var(--u) * 2.4)); }
   .read .tenth { font-size: calc(var(--size, calc(var(--u) * 2.4)) * 0.55); letter-spacing: -0.01em; }
+  /* `vertical-align: super` shifts by a fraction of the unit's OWN size,
+     which at 34% is barely a nudge beside a 90px figure. An explicit rise
+     lifts the degree symbol and the F up to the digits, as on the Pi. */
   .read .unit  {
     font-size: calc(var(--size, calc(var(--u) * 2.4)) * 0.34);
-    vertical-align: super;
+    vertical-align: var(--unit-rise, 1.25em);
     margin-left: 0.1em;
     color: var(--ink-dim);
   }

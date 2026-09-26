@@ -35,10 +35,12 @@ const Sources = (() => {
 
   // ── Shared helpers ────────────────────────────────────────────────
 
-  const CARDINALS = ["North", "North North East", "North East", "East North East",
-                     "East", "East South East", "South East", "South South East",
-                     "South", "South South West", "South West", "West South West",
-                     "West", "West North West", "North West", "North North West"];
+  /* The PiConsole spells out the leading point and abbreviates the rest:
+     WSW reads "West SW", not "West South West". */
+  const CARDINALS = ["North", "North NE", "North East", "East NE",
+                     "East", "East SE", "South East", "South SE",
+                     "South", "South SW", "South West", "West SW",
+                     "West", "West NW", "North West", "North NW"];
   const SHORT = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
                  "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
 
@@ -72,6 +74,42 @@ const Sources = (() => {
     if (wm2 < 600) return "Moderate";
     if (wm2 < 900) return "High";
     return "Very High";
+  }
+
+  /* Dew point by the Magnus formula, and feels-like by the NWS heat index
+     above 80F or wind chill below 50F. Both are computed rather than read
+     from better_forecast, which rounds to whole degrees and would peg the
+     console's tenth digit at zero. */
+  function dewPointF(tempF, rh) {
+    if (tempF === null || rh === null || !(rh > 0)) return null;
+    const t = (tempF - 32) * 5 / 9, a = 17.625, b = 243.04;
+    const g = Math.log(rh / 100) + (a * t) / (b + t);
+    return (b * g) / (a - g) * 9 / 5 + 32;
+  }
+
+  function heatIndexF(T, RH) {
+    let hi = 0.5 * (T + 61 + (T - 68) * 1.2 + RH * 0.094);
+    if ((hi + T) / 2 < 80) return hi;
+    hi = -42.379 + 2.04901523 * T + 10.14333127 * RH
+       - 0.22475541 * T * RH - 0.00683783 * T * T - 0.05481717 * RH * RH
+       + 0.00122874 * T * T * RH + 0.00085282 * T * RH * RH
+       - 0.00000199 * T * T * RH * RH;
+    if (RH < 13 && T >= 80 && T <= 112) {
+      hi -= (13 - RH) / 4 * Math.sqrt((17 - Math.abs(T - 95)) / 17);
+    } else if (RH > 85 && T >= 80 && T <= 87) {
+      hi += (RH - 85) / 10 * ((87 - T) / 5);
+    }
+    return hi;
+  }
+
+  function apparentF(tempF, rh, windMph) {
+    if (tempF === null) return null;
+    if (tempF >= 80 && rh !== null) return heatIndexF(tempF, rh);
+    if (tempF <= 50 && windMph > 3) {
+      const v = Math.pow(windMph, 0.16);
+      return 35.74 + 0.6215 * tempF - 35.75 * v + 0.4275 * tempF * v;
+    }
+    return tempF;
   }
 
   function feelsText(f) {
@@ -125,7 +163,7 @@ const Sources = (() => {
   async function demo() {
     return {
       forecast:  { wind: "11 mph S", text: "Partly cloudy until 3 PM today",
-                   temp: 90, low: 61, high: 91, pop: 0, daily: 0, issued: "1 PM" },
+                   temp: 90, low: 61, high: 91, pop: 0, daily: "0%", issued: "1 PM" },
       outdoor:   { temp: 89.9, diff: -2.8, trend: 3.6,
                    min: 60.7, minAt: "7:02 AM", max: 91.4, maxAt: "11:32 AM",
                    feels: 89.9, feelsText: "Feeling hot", humidity: 32, dew: 56.4 },
@@ -184,17 +222,27 @@ const Sources = (() => {
      high and low rather than the forecast's. The obs_st row is a fixed
      array of metric values; only four of its slots are wanted here.
 
-     0 epoch   2 wind avg   3 wind gust   7 air temp   11 solar radiation */
-  async function tempestDeviceDay(deviceId, token) {
+     0 epoch   2 wind avg   3 wind gust   6 station pressure
+     7 air temp   11 solar radiation
+
+     These are raw device values and always metric - m/s, mb, C - whatever
+     units the request asks for, so they are converted here. */
+  const MS_TO_MPH = 2.236936;
+  const MB_TO_INHG = 0.0295299831;
+
+  async function tempestDeviceDay(deviceId, token, dayOffset = 0) {
     const rows = await tget("/observations/device/" + deviceId +
-                            "?day_offset=0&token=" + encodeURIComponent(token));
+                            "?day_offset=" + dayOffset +
+                            "&token=" + encodeURIComponent(token));
     const obs = (rows && rows.obs) || [];
     return obs
       .filter((r) => Array.isArray(r) && r.length > 11)
       .map((r) => ({
         t: new Date(r[0] * 1000),
         tempF: r[7] === null ? null : r[7] * 9 / 5 + 32,
-        gustMph: r[3] === null ? null : r[3] * 2.236936,
+        windMph: r[2] === null ? null : r[2] * MS_TO_MPH,
+        gustMph: r[3] === null ? null : r[3] * MS_TO_MPH,
+        pressInHg: r[6] === null ? null : r[6] * MB_TO_INHG,
         solar: r[11]
       }));
   }
@@ -245,12 +293,20 @@ const Sources = (() => {
 
     // ── Today's extremes, if a device id was supplied ────────────────
     let tMin = null, tMax = null, tMinAt = "—", tMaxAt = "—";
-    let gustMax = null, peakSun = null;
+    let gustMax = null, peakSun = null, windDayAvg = null;
+    let tempTrend = null, tempDiff24 = null;
+    let pLowIn = null, pHighIn = null, pLowAt = "—", pHighAt = "—";
+    let pRate3h = null;
     let minLabel = "Forecast Low", maxLabel = "Forecast High";
 
     if (t.deviceId) {
       try {
-        const rows = await tempestDeviceDay(t.deviceId, t.token);
+        const [today, yesterday] = await Promise.all([
+          tempestDeviceDay(t.deviceId, t.token, 0),
+          tempestDeviceDay(t.deviceId, t.token, 1).catch(() => [])
+        ]);
+        const rows = today;
+
         const temps = rows.filter((r) => r.tempF !== null);
         if (temps.length) {
           let lo = temps[0], hi = temps[0];
@@ -259,8 +315,49 @@ const Sources = (() => {
           tMinAt = clock(lo.t); tMaxAt = clock(hi.t);
           minLabel = "Today's Low"; maxLabel = "Today's High";
         }
+
+        // Trend over the last hour, and the change since this time yesterday.
+        const tSeries = temps.map((r) => ({ t: r.t, v: r.tempF }));
+        const hourAgo = at(tSeries, new Date(now.getTime() - 3600000), 30);
+        const dayAgo = at(yesterday.filter((r) => r.tempF !== null)
+                                   .map((r) => ({ t: r.t, v: r.tempF })),
+                          new Date(now.getTime() - 86400000), 90);
+        const nowTemp = pick(obs.air_temp, cc.air_temperature);
+        if (nowTemp !== null && hourAgo !== null) tempTrend = nowTemp - hourAgo;
+        if (nowTemp !== null && dayAgo !== null)  tempDiff24 = nowTemp - dayAgo;
+
         const gusts = rows.map((r) => r.gustMph).filter((v) => v !== null);
         if (gusts.length) gustMax = Math.max(...gusts);
+
+        const winds = rows.map((r) => r.windMph).filter((v) => v !== null);
+        if (winds.length) {
+          windDayAvg = winds.reduce((a2, b2) => a2 + b2, 0) / winds.length;
+        }
+
+        /* Device observations carry STATION pressure; the dial is sea level.
+           The difference between the two is fixed by the station's elevation,
+           so take today's offset from the pair the observation endpoint
+           reports and apply it to the day's extremes. Roughly 1.7 inHg at
+           1,600 feet, and it moves too little across a day to matter here. */
+        const slpNow = pick(obs.sea_level_pressure, cc.sea_level_pressure);
+        const stnNow = pick(obs.station_pressure, cc.station_pressure);
+        const press = rows.filter((r) => r.pressInHg !== null);
+        if (press.length && slpNow !== null && stnNow !== null) {
+          const offset = slpNow - stnNow;
+          let lo = press[0], hi = press[0];
+          for (const r of press) {
+            if (r.pressInHg < lo.pressInHg) lo = r;
+            if (r.pressInHg > hi.pressInHg) hi = r;
+          }
+          pLowIn = lo.pressInHg + offset;  pLowAt = clock(lo.t);
+          pHighIn = hi.pressInHg + offset; pHighAt = clock(hi.t);
+
+          // Rate of change over three hours. The offset cancels out, so it
+          // is the same whether measured at station level or sea level.
+          const then = at(press.map((r) => ({ t: r.t, v: r.pressInHg })),
+                          new Date(now.getTime() - 3 * 3600000), 45);
+          if (then !== null) pRate3h = (stnNow - then) / 3;
+        }
 
         const solar = rows.filter((r) => Number.isFinite(r.solar));
         if (solar.length > 1) {
@@ -271,7 +368,7 @@ const Sources = (() => {
           }
           peakSun = Math.round(wh / 1000 * 10) / 10;
         }
-      } catch (e) { /* the optional call; the panel falls back to forecast */ }
+      } catch (e) { /* the optional call; the panels fall back to dashes */ }
     }
     if (tMin === null) { tMin = day.air_temp_low ?? null; tMax = day.air_temp_high ?? null; }
 
@@ -291,6 +388,8 @@ const Sources = (() => {
     const windNow  = pick(obs.wind_avg, cc.wind_avg, 0);
     const windGust = pick(obs.wind_gust, cc.wind_gust, 0);
     const airTemp  = pick(obs.air_temp, cc.air_temperature);
+    const humidity = pick(obs.rh, cc.relative_humidity);
+    const apparent = apparentF(airTemp, humidity, windNow);
 
     // ── Pressure ─────────────────────────────────────────────────────
     const slp = pick(obs.sea_level_pressure, cc.sea_level_pressure);
@@ -362,17 +461,19 @@ const Sources = (() => {
       },
       outdoor: {
         temp: airTemp,
-        diff: null,                                   // needs yesterday's obs
-        trend: null,                                  // needs an hour of history
+        diff: tempDiff24,
+        trend: tempTrend,
         min: tMin, minAt: tMinAt, max: tMax, maxAt: tMaxAt,
         minLabel, maxLabel,
-        feels: pick(cc.feels_like, null),
-        feelsText: feelsText(pick(cc.feels_like, null)),
-        humidity: Math.round(pick(obs.rh, cc.relative_humidity, 0)),
-        dew: pick(cc.dew_point, null)
+        feels: apparent,
+        feelsText: feelsText(apparent),
+        humidity: Math.round(humidity === null ? 0 : humidity),
+        dew: dewPointF(airTemp, humidity) ?? pick(cc.dew_point, null)
       },
       wind: {
-        avg:  Math.round(pick(cc.wind_avg, 0) * 10) / 10,
+        // The day's mean, not the current reading - "Wind" above already
+        // shows that, and printing the same figure twice helps nobody.
+        avg:  windDayAvg === null ? null : Math.round(windDayAvg * 10) / 10,
         max:  gustMax === null ? null : Math.round(gustMax),
         now:  Math.round(windNow * 10) / 10,
         gust: Math.round(windGust * 10) / 10,
@@ -408,8 +509,8 @@ const Sources = (() => {
       },
       barometer: {
         slp,
-        low: null, lowAt: "—", high: null, highAt: "—",
-        trend: pTrend, rate: null, verdict
+        low: pLowIn, lowAt: pLowAt, high: pHighIn, highAt: pHighAt,
+        trend: pTrend, rate: pRate3h, verdict
       },
       /* Sager needs a METAR feed the Tempest API does not carry. What the
          station itself supports is a pressure-tendency outlook, so that is

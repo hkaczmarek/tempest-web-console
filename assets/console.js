@@ -219,7 +219,9 @@ function render() {
   $("f-low").textContent   = f.low + F;
   $("f-high").textContent  = f.high + F;
   $("f-pop").textContent   = f.pop;
-  $("f-daily").textContent = f.daily + "%";
+  // The sources supply this with its own unit - a percentage from one, an
+  // inch total from another - so it is not given one here.
+  $("f-daily").textContent = f.daily;
   $("f-issued").textContent = f.issued;
   drawForecastIcon();
 
