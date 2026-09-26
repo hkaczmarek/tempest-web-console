@@ -15,6 +15,36 @@ const $ = (id) => document.getElementById(id);
 const SVG = "http://www.w3.org/2000/svg";
 const F = "℉";
 
+/* Value-banded colours, carried over from the Pi console's temp-colour
+   patch so both screens read the same at a glance. A reading takes the hue
+   of the band its value falls in; hues[i] applies below stops[i], and the
+   last hue applies above the final stop.
+
+   Set BAND_COLOURS to false to go back to plain white numerals. */
+const BAND_COLOURS = true;
+
+const TEMP_BANDS = {
+  stops: [45, 60, 78, 90],
+  hues:  ["#00a4b4", "#4fc3d7", "#c8c8c8", "#f0a050", "#f05e40"]
+};
+// Dew point is a comfort scale, not a temperature scale: dry is pleasant,
+// so the low end is green rather than cold blue.
+const DEW_BANDS = {
+  stops: [55, 65, 70],
+  hues:  ["#81c784", "#c8c8c8", "#f0a050", "#f05e40"]
+};
+
+function band(el_, value, bands) {
+  if (!BAND_COLOURS) return;
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    el_.style.color = "";
+    return;
+  }
+  let i = 0;
+  while (i < bands.stops.length && value >= bands.stops[i]) i++;
+  el_.style.color = bands.hues[i];
+}
+
 // Fixed-decimal text, or an en dash when a source has no value for it.
 // Several figures exist only in some sources - the barometer's daily
 // extremes, month and year rainfall - so every raw toFixed goes through
@@ -224,6 +254,7 @@ function render() {
   $("f-wind").textContent = f.wind;
   $("f-text").textContent = f.text;
   reading($("f-temp"), f.temp, F, 0);
+  band($("f-temp"), f.temp, TEMP_BANDS);
   $("f-low").textContent   = f.low + F;
   $("f-high").textContent  = f.high + F;
   $("f-pop").textContent   = f.pop;
@@ -234,6 +265,7 @@ function render() {
   drawForecastIcon();
 
   reading($("t-outdoor"), o.temp, F);
+  band($("t-outdoor"), o.temp, TEMP_BANDS);
   reading($("t-diff"), o.diff, F);
   // Only label a direction when there is a figure to have one.
   if (o.diff !== null && o.diff !== undefined) {
@@ -256,8 +288,10 @@ function render() {
       (o.trend >= 0 ? "+" : "") + $("t-trend").firstChild.textContent;
   }
   reading($("t-feels"), o.feels, F);
+  band($("t-feels"), o.feels, TEMP_BANDS);
   $("t-hum").textContent = o.humidity;
   reading($("t-dew"), o.dew, F);
+  band($("t-dew"), o.dew, DEW_BANDS);
   $("t-feels-text").textContent = o.feelsText;
 
   $("w-avg").textContent  = w.avg;
