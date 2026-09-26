@@ -102,12 +102,20 @@ const Sources = (() => {
     return hi;
   }
 
+  /* The Rothfusz regression is only valid in warm, HUMID air. In dry heat
+     it drifts below the air temperature - 92.5 F at 27% returns 90.2 - which
+     is not what "feels like" means. The NWS uses the air temperature
+     whenever the index falls beneath it, and so does the station itself.
+     Wind chill is clamped the same way at the other end. */
   function apparentF(tempF, rh, windMph) {
     if (tempF === null) return null;
-    if (tempF >= 80 && rh !== null) return heatIndexF(tempF, rh);
+    if (tempF >= 80 && rh !== null) {
+      return Math.max(tempF, heatIndexF(tempF, rh));
+    }
     if (tempF <= 50 && windMph > 3) {
       const v = Math.pow(windMph, 0.16);
-      return 35.74 + 0.6215 * tempF - 35.75 * v + 0.4275 * tempF * v;
+      const chill = 35.74 + 0.6215 * tempF - 35.75 * v + 0.4275 * tempF * v;
+      return Math.min(tempF, chill);
     }
     return tempF;
   }
