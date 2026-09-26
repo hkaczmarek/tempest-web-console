@@ -267,11 +267,15 @@
           <div class="label left">Sunrise</div>
           <div class="label right">Sunset</div>
         </div>
-        <svg viewBox="0 0 300 30" preserveAspectRatio="none"
-             style="width:100%;height:calc(var(--u)*1.9);display:block" role="img" aria-label="Daylight progress">
-          <path id="s-track" d="M8 26 Q150 -14 292 26" fill="none" stroke="#2e2e2e" stroke-width="3"/>
-          <path id="s-done"  d="M8 26 Q150 -14 292 26" fill="none" stroke="#0e7c8a" stroke-width="3"/>
-          <circle id="s-sun" cx="150" cy="6" r="6" fill="#ffca28"/>
+        <!-- No preserveAspectRatio="none" here. Stretching the box to a fixed
+             height scales x and y by different amounts, which turns the sun
+             into an oval and thins the stroke unevenly. Letting the viewBox
+             set the aspect keeps both true at any panel width. -->
+        <svg viewBox="0 0 300 26" style="width:100%;height:auto;display:block"
+             role="img" aria-label="Daylight progress">
+          <path id="s-track" d="M8 22 Q150 -10 292 22" fill="none" stroke="#2e2e2e" stroke-width="2"/>
+          <path id="s-done"  d="M8 22 Q150 -10 292 22" fill="none" stroke="#0e7c8a" stroke-width="2"/>
+          <circle id="s-sun" cx="150" cy="6" r="5" fill="#ffca28"/>
         </svg>
         <div class="row r2">
           <div class="sub left" id="s-rise">6:44 AM</div>
