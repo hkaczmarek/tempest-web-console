@@ -1,9 +1,8 @@
 # Tempest Web Console
 
 A browser replica of the [WeatherFlow PiConsole](https://github.com/peted-davis/WeatherFlow_PiConsole)
-screen, driven by Home Assistant. Six panels, live dials, and the half-size
-decimal treatment — in any browser, on any device, with no Raspberry Pi
-required.
+screen. Six panels, live dials, and the half-size decimal treatment — in any
+browser, on any device, with no Raspberry Pi required.
 
 ![The console](docs/screenshot.png)
 
@@ -15,14 +14,16 @@ you fill in.
 ## Contents
 
 - [What this is](#what-this-is)
+- [Two data sources](#two-data-sources)
 - [Quick start](#quick-start)
-- [Connecting it to Home Assistant](#connecting-it-to-home-assistant)
+- [Source 1 — the Tempest API](#source-1--the-tempest-api)
+- [Source 2 — Home Assistant](#source-2--home-assistant)
 - [Security](#security)
 - [The panels](#the-panels)
 - [Values the console derives itself](#values-the-console-derives-itself)
 - [Running it on a wall tablet](#running-it-on-a-wall-tablet)
 - [Customising](#customising)
-- [Using a different data source](#using-a-different-data-source)
+- [Adding your own source](#adding-your-own-source)
 - [Known gaps](#known-gaps)
 - [Credits](#credits)
 
@@ -34,12 +35,10 @@ The WeatherFlow PiConsole is an excellent piece of software, but it is a Kivy
 application: it runs on one machine, on one screen, and you have to be in front
 of that screen to read it. This project reproduces the same layout as a web
 page, so the console is available on a phone, a wall tablet, a desktop browser,
-or a Home Assistant dashboard tab.
+or inside a Home Assistant dashboard.
 
-It is **not** a port of the PiConsole. It shares the layout, the panel colours,
-and the number formatting; it reads its data from Home Assistant rather than
-from the Tempest's UDP broadcasts, and it computes several figures the
-PiConsole gets from WeatherFlow's API.
+It is **not** a port of the PiConsole. It shares the layout, the panel colours
+and the number formatting; where it gets its data is up to you.
 
 Panels:
 
@@ -55,18 +54,43 @@ from the buttons at the bottom left — the same behaviour the PiConsole has.
 
 ---
 
-## Quick start
+## Two data sources
 
-Clone it and open `index.html`. That's the whole first step.
+Set `source` in `config.js` to pick one.
+
+| | `"tempest"` | `"homeassistant"` |
+|---|---|---|
+| **Setup** | one token, one station id | one token, a map of ~20 entities |
+| **Reachable from** | anywhere with internet | wherever your HA is reachable |
+| **Token risk** | read-only, your own stations | **full control of your home** |
+| Current conditions | yes | yes |
+| Ten-day forecast | yes | yes |
+| Sunrise / sunset | yes | yes |
+| Today's observed high and low | with a device id | yes |
+| Day's max gust, peak sun hours | with a device id | yes |
+| 24-hour difference, hourly trend | no | yes |
+| Barometer's daily low and high | no | yes |
+| Month and year rainfall | no | with `utility_meter` helpers |
+| Sager forecast | pressure outlook instead | yes |
+
+**Start with `"tempest"`.** It is quicker to set up, safer to deploy, and works
+from a phone on cellular. Move to Home Assistant when you want the derived
+figures or the real Sager forecast.
+
+Anything a source cannot supply shows an en dash. Nothing breaks.
+
+---
+
+## Quick start
 
 ```bash
 git clone https://github.com/hkaczmarek/tempest-web-console.git
 cd tempest-web-console
 ```
 
-Opened straight from the filesystem it shows a fixed demo snapshot, so you can
-see the layout before wiring anything up. The clock is live; everything else is
-frozen.
+Open `index.html`. That's the whole first step — it shows a fixed demo
+snapshot so you can see the layout before connecting anything. The clock is
+live; everything else is frozen.
 
 To serve it locally instead:
 
@@ -75,31 +99,80 @@ python3 -m http.server 8777
 # then http://localhost:8777
 ```
 
+Then `cp config.example.js config.js` and pick a source below.
+
 ---
 
-## Connecting it to Home Assistant
+## Source 1 — the Tempest API
 
-```bash
-cp config.example.js config.js
+### Get a token
+
+Sign in at [tempestwx.com](https://tempestwx.com), then **Settings → Data
+Authorizations → Create Token**. Copy it.
+
+This token is read-only and scoped to your own stations. It cannot change
+anything.
+
+### Find your station id
+
+Open the console page, open your browser's developer console (F12) and run:
+
+```js
+Sources.tempestStations("your-token-here")
 ```
 
-Then edit `config.js`. There are three things to set: where Home Assistant is,
-a token, and the entity map.
+It prints a table of your stations and devices. Take `stationId`, and
+`deviceId` if you want observed extremes.
 
-### 1. Where to put the files
+### Fill in config.js
+
+```js
+source: "tempest",
+tempest: {
+  stationId: 12345,
+  deviceId:  67890,     // optional
+  token:     "your-token-here"
+}
+```
+
+`deviceId` is worth adding. Without it the temperature panel shows the
+**forecast** high and low, and labels them as such. With it, the console reads
+the day's raw observations and shows the **observed** high and low with the
+time each occurred, plus the day's maximum gust and peak sun hours.
+
+That's it. Open the page.
+
+### If it doesn't load
+
+The footer says what went wrong. "The browser blocked the request" means a
+cross-origin problem: check the token and station id first, since a rejected
+request can surface the same way. WeatherFlow's API is a public cloud endpoint
+and browser calls to it are normal, but if your browser does block it, serve
+the page through any small proxy that adds `Access-Control-Allow-Origin`, or
+use the Home Assistant source instead.
+
+---
+
+## Source 2 — Home Assistant
+
+### Where to put the files
 
 **Recommended — serve it from Home Assistant itself.** Copy the repo into
-`/config/www/tempest-console/` and it is served at:
+`/config/www/tempest-web-console/`, and it is served at:
 
 ```
-http://homeassistant.local:8123/local/tempest-console/index.html
+http://homeassistant.local:8123/local/tempest-web-console/index.html
 ```
 
-Leave `baseUrl: ""` in that case. Requests are then same-origin, which means
-nothing to configure for CORS and no mixed-content warnings over HTTPS.
+Leave `baseUrl: ""` in that case. Requests are then same-origin: nothing to
+configure for CORS, and no mixed-content warnings over HTTPS.
 
-**Anywhere else** — a NAS, a Pi, GitHub Pages, a folder on your desktop — set
-`baseUrl` to your Home Assistant URL:
+If you have the **Studio Code Server** add-on, drag the unzipped folder into
+`config/www` in its file tree and edit `config.js` there. **Terminal & SSH** or
+the **File editor** add-on work too.
+
+**Anywhere else** — a NAS, a Pi, a folder on your desktop — set `baseUrl` to
+your Home Assistant URL:
 
 ```js
 baseUrl: "http://192.168.1.50:8123",
@@ -114,36 +187,28 @@ http:
     - http://192.168.1.99:8777
 ```
 
-Restart Home Assistant after that. Without it the browser blocks every request
-and the console shows a CORS error in the footer.
+Restart Home Assistant afterwards.
 
-### 2. A long-lived access token
+> Opening `index.html` straight off disk (`file://`) will **not** work against
+> Home Assistant. File origins send `Origin: null` and HA rejects them. Serve
+> the page over HTTP, or use the Tempest source.
 
-In Home Assistant: click your user name in the sidebar → **Security** tab →
-scroll to **Long-lived access tokens** → **Create token**. Copy it into
-`config.js`.
+### Get a token
 
-Read [Security](#security) before you do. A token is a password.
+Click your user name at the bottom of the HA sidebar → **Security** tab →
+**Long-lived access tokens** → **Create token**. It is shown once.
 
-### 3. The entity map
+Read [Security](#security) first. This one is not like the Tempest token.
+
+### The entity map
 
 `config.example.js` ships with the entity IDs from the
 [WeatherFlow Forecast](https://github.com/briis/weatherflow_forecast) (`ws_core`)
 integration, for a station named "Wren Dr". Yours will be named after your own
-station.
+station. Find them in **Developer Tools → States**.
 
-Find them in **Developer Tools → States**, filtering on your station's name.
-
-```js
-entities: {
-  temperature: "sensor.your_station_temperature",
-  ...
-}
-```
-
-Any entity can be set to `null`. Its figure shows an en dash rather than
-breaking the panel, so you can bring the console up with a partial map and fill
-in the rest later.
+Any entity can be set to `null` — its figure shows a dash rather than breaking
+the panel, so you can bring the console up with a partial map.
 
 #### Which integration?
 
@@ -158,9 +223,9 @@ things:
 | Lightning count last 1 hr / 3 hr | no | yes |
 | Forecast entity | no | yes |
 
-The console wants the second one for the barometer, rainfall and forecast
-panels. If you run both, mix freely — `precipitationRate` in the shipped
-example comes from the core integration because it updates faster.
+The console wants the second for the barometer, rainfall and forecast panels.
+If you run both, mix freely — `precipitationRate` in the shipped example comes
+from the core integration because it updates faster.
 
 > **The barometer needs sea-level pressure, not station pressure.** The Tempest
 > reports raw barometric pressure, which at any elevation reads low — about
@@ -171,75 +236,82 @@ example comes from the core integration because it updates faster.
 
 ## Security
 
-`config.js` contains a long-lived token, which grants **full access** to your
-Home Assistant — every entity, every service, every light and lock. Anyone who
-can read that file can control your house.
+`config.js` is gitignored. Do not remove that line, and do not commit the file.
+Beyond that, the two tokens carry very different risk.
 
-Consequences worth being deliberate about:
+### The Tempest token
 
-- **`config.js` is gitignored.** Do not remove that line, and do not commit the
-  file. If you ever do, revoke the token in Home Assistant immediately;
-  rewriting git history is not enough, because the commit may already have been
-  fetched.
+Read-only, and scoped to stations you own. The worst case if it leaks is that
+someone else can read your weather. Revoke it in the Tempest web app under
+**Data Authorizations**.
+
+### The Home Assistant token
+
+A long-lived access token grants **full access** to your Home Assistant — every
+entity, every service, every light and lock. Anyone who can read the file can
+control your house.
+
 - **Anything served from `/config/www/` is public to anyone who can reach your
   Home Assistant, without logging in.** That is how the `/local/` path works.
-  So putting `config.js` there exposes the token to your whole LAN, and to the
-  internet if Home Assistant is exposed. That is usually acceptable on a trusted
-  home network and unacceptable otherwise.
-- **Do not put this on the public internet as-is.** If you want the console
-  reachable from outside, put it behind the same authentication as Home
-  Assistant itself, or behind a reverse proxy that requires a login.
-- **Create a dedicated user** for the console rather than using your own
-  account's token. Home Assistant tokens cannot be scoped to read-only, but a
-  separate user at least lets you revoke this one without signing yourself out
-  everywhere.
+  Putting `config.js` there exposes the token to your whole LAN, and to the
+  internet if HA is exposed. Usually fine on a trusted home network;
+  not otherwise.
+- **Do not put this on the public internet as-is.** Put it behind the same
+  authentication as Home Assistant, or behind a reverse proxy requiring a login.
+- **Create a dedicated user** rather than using your own account's token. HA
+  tokens cannot be scoped read-only, but a separate user lets you revoke this
+  one without signing yourself out everywhere.
+- If a token is ever committed, **revoke it immediately**. Rewriting git
+  history is not enough — the commit may already have been fetched.
 
 The console only ever issues `GET /api/states`, `GET /api/history/period` and
-one `POST` to `weather.get_forecasts`. It never writes. But the token it
-carries is not similarly limited, and that is what matters.
+one `POST` to `weather.get_forecasts`. It never writes. But the token it carries
+is not similarly limited, and that is what matters.
 
 ---
 
 ## The panels
 
-| Panel | Shows | Source |
-|---|---|---|
-| **Forecast** | Condition, forecast wind, today's high/low, chance of rain | `weather.*` entity, plus a `weather.get_forecasts` call |
-| **Temperature** | Outdoor, 24 hr difference, hourly trend, today's min/max with timestamps, feels-like, humidity, dew point | Live sensors; min/max/trend derived from history |
-| **Wind Speed** | Compass with the 30° sector the wind is from, current, gust, average, today's max gust, Beaufort | Live sensors; max gust from history; Beaufort computed |
-| **Solar / UV** | Irradiance, UV index with band, sunrise/sunset arc, daylight remaining, peak sun hours | Live sensors, `sun.sun`, peak sun hours integrated from history |
-| **Rainfall** | Today, yesterday, month, year, rate with an intensity scale | Live sensors |
-| **Barometer** | Sea-level pressure on a banded aneroid face, today's low/high, 3-hour trend | Live sensor; extremes and trend from history |
-| **Sager** | Outlook, expected change, wind direction and force, temperature trend, the underlying sentence | [`zambretti_sager`](https://github.com/ziffmafiya/zambretti_sager) custom integration |
-| **Moon** | Phase name, illumination, drawn disc, next full moon | Computed from the date — no integration needed |
-| **Lightning** | Last strike distance and time, counts for the last hour / today / yesterday | Live sensors |
+| Panel | Shows |
+|---|---|
+| **Forecast** | Condition, forecast wind, today's high and low, chance of rain |
+| **Temperature** | Outdoor, 24 hr difference, hourly trend, today's min and max with timestamps, feels-like, humidity, dew point |
+| **Wind Speed** | Compass with the 30° sector the wind is from, current, gust, average, day's max gust, Beaufort |
+| **Solar / UV** | Irradiance, UV index with band, sunrise/sunset arc, daylight remaining, peak sun hours |
+| **Rainfall** | Today, yesterday, month, year, rate with an intensity scale |
+| **Barometer** | Sea-level pressure on a banded aneroid face, day's low and high, trend |
+| **Sager** | Outlook, expected change, wind direction and force, temperature trend. From the [`zambretti_sager`](https://github.com/ziffmafiya/zambretti_sager) integration on the HA source; a pressure-tendency outlook on the Tempest source, titled as such |
+| **Moon** | Phase name, illumination, drawn disc, next full moon. Computed from the date — no integration needed |
+| **Lightning** | Last strike distance and time, counts for the last hour, today and yesterday |
 
 ---
 
 ## Values the console derives itself
 
-Several figures on the PiConsole come from WeatherFlow's API, which Home
-Assistant does not expose. Rather than asking you to build a template sensor
-for each, the console fetches **one** 24-hour history window at startup and on
-every refresh, then computes:
+Several figures on the PiConsole come from WeatherFlow's API in a form neither
+source hands over directly. Rather than asking you to build a helper for each,
+the console fetches one day of history and computes them.
 
-| Figure | How |
-|---|---|
-| Today's min/max temperature and pressure | Extremes since local midnight, with the timestamp of each |
-| 24 hour difference | Current reading minus the nearest sample to 24 hours ago |
-| Hourly trend | Current reading minus the nearest sample to one hour ago |
-| Today's max gust | Maximum of the gust series since midnight |
-| Peak sun hours | Trapezoidal integration of irradiance since midnight, in kWh/m² |
-| Pressure trend and verdict | Rate of change over the last three hours |
-| Wind dial scale | Rounded up from today's max gust, so the bars stay readable in both a calm week and a windy one |
-| Moon phase | Synodic month from a known new moon — no moon integration required |
+On the **Home Assistant** source that is a single `/api/history/period` call
+covering four entities — cheaper than four template sensors recomputing on
+every state change. On the **Tempest** source it is one call to the device
+observations endpoint, which needs `deviceId`.
 
-That is a single `/api/history/period` call covering four entities, which is
-cheaper than four template sensors recomputing on every state change.
+| Figure | How | Tempest | HA |
+|---|---|---|---|
+| Today's min/max temperature, with timestamps | Extremes since local midnight | with device id | yes |
+| Today's max gust | Maximum of the gust series | with device id | yes |
+| Peak sun hours | Trapezoidal integration of irradiance, in kWh/m² | with device id | yes |
+| 24 hour difference | Now minus the nearest sample 24 hours back | — | yes |
+| Hourly trend | Now minus the nearest sample an hour back | — | yes |
+| Barometer's daily low and high | Extremes since midnight | — | yes |
+| Pressure trend and verdict | Rate of change over three hours | API's own flag | computed |
+| Wind dial scale | Rounded up from the day's max gust | yes | yes |
+| Moon phase | Synodic month from a known new moon | yes | yes |
 
-Home Assistant's recorder must be keeping those entities for this to work. If
-you have `exclude`d them, the affected figures show an en dash and everything
-else carries on.
+On the HA source, the recorder must be keeping those entities. If you have
+`exclude`d them, the affected figures show a dash and everything else carries
+on.
 
 ---
 
@@ -313,44 +385,56 @@ stretches to match. Raise it for bigger dials and more whitespace elsewhere.
 
 ---
 
-## Using a different data source
+## Adding your own source
 
 A source is an async function returning one fixed object shape, documented at
-the top of `assets/sources.js`. Two ship with the project:
+the top of `assets/sources.js`. Three ship with the project:
 
 ```js
 Sources.demo()                 // a fixed snapshot
-Sources.homeAssistant(config)  // reads a live instance
+Sources.tempest(config)        // WeatherFlow's cloud API
+Sources.homeAssistant(config)  // a live Home Assistant
 ```
 
 To drive the console from something else — a Tempest UDP listener, Weather
-Underground, a flat JSON file on a NAS — write a third function returning the
-same shape and point `assets/main.js` at it. Nothing in `console.js` knows or
-cares where the numbers came from.
+Underground, a flat JSON file on a NAS — write a fourth returning the same
+shape and add it to the `SOURCES` map in `assets/main.js`. Nothing in
+`console.js` knows or cares where the numbers came from.
 
-Any numeric field may be `null`; the renderer draws an en dash.
+Every numeric field may be `null`; the renderer draws an en dash. Two label
+fields, `outdoor.minLabel` / `maxLabel` and `sager.title`, let a source say what
+its figures actually are rather than inheriting a claim it cannot support.
+
+### Why not read the Tempest's UDP broadcast directly?
+
+The Tempest hub broadcasts observations on UDP port 50222 on your LAN, which is
+how the PiConsole works and why it needs no internet. A browser cannot open a
+UDP socket, so a web page cannot listen to it. Reaching that data from a browser
+needs something on the network to relay it — which is exactly what the Home
+Assistant source is.
 
 ---
 
 ## Known gaps
 
 - **Moonrise and moonset show a dash.** Phase and illumination are computed from
-  the date, which needs nothing; rise and set times need the observer's latitude
-  and longitude and a proper ephemeris. If you have a moon integration, map
-  those two fields to it.
-- **Month and year rainfall totals** are not produced by either WeatherFlow
-  integration. Point `precipitationMonth` and `precipitationYear` at
-  `utility_meter` helpers if you keep them; otherwise both show a dash.
-- **Sunrise and sunset may be a minute or two out.** When the sun is above the
-  horizon, today's sunrise has already passed, so the console takes `sun.sun`'s
-  `next_rising` and subtracts a day. The difference from the true time is
-  under two minutes and invisible at the displayed precision.
-- **The forecast panel needs `weather.get_forecasts`**, which requires Home
-  Assistant 2023.9 or newer. On older versions the panel degrades to dashes and
-  the rest of the console is unaffected.
+  the date, which needs nothing; rise and set need the observer's latitude and
+  longitude and a proper ephemeris.
+- **Month and year rainfall** are not produced by the Tempest API or by either
+  HA integration. On the HA source, point `precipitationMonth` and
+  `precipitationYear` at `utility_meter` helpers if you keep them.
+- **The Sager forecast needs a METAR feed**, which the Tempest API does not
+  carry. On the Tempest source the panel shows a pressure-tendency outlook
+  instead, titled "Pressure Outlook" so it does not claim to be Sager.
+- **Sunrise and sunset on the HA source may be a minute or two out.** When the
+  sun is above the horizon, today's sunrise has passed, so the console takes
+  `sun.sun`'s `next_rising` and subtracts a day. The Tempest source uses the
+  forecast's own sunrise and sunset and has no such error.
+- **The HA forecast panel needs `weather.get_forecasts`**, so Home Assistant
+  2023.9 or newer. On older versions that panel degrades to dashes.
 - **No unit switching.** Everything is imperial, matching the PiConsole's US
-  configuration. The conversions are not in the code at all, so metric would be
-  real work rather than a flag.
+  configuration. The Tempest source requests imperial units from the API; the HA
+  source takes whatever your entities report.
 
 ---
 
@@ -358,8 +442,9 @@ Any numeric field may be `null`; the renderer draws an en dash.
 
 - [WeatherFlow PiConsole](https://github.com/peted-davis/WeatherFlow_PiConsole)
   by Peter Davis — the original, and the design this follows.
+- [WeatherFlow Tempest API](https://apidocs.tempestwx.com/) — the cloud source.
 - [weatherflow_forecast](https://github.com/briis/weatherflow_forecast) by Bjarne
-  Riis — the Home Assistant integration most of the data comes from.
+  Riis — the Home Assistant integration.
 - [zambretti_sager](https://github.com/ziffmafiya/zambretti_sager) — the Sager
   and Zambretti forecasts.
 - [Inter](https://rsms.me/inter/) by Rasmus Andersson.

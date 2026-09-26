@@ -15,6 +15,13 @@ const $ = (id) => document.getElementById(id);
 const SVG = "http://www.w3.org/2000/svg";
 const F = "℉";
 
+// Fixed-decimal text, or an en dash when a source has no value for it.
+// Several figures exist only in some sources - the barometer's daily
+// extremes, month and year rainfall - so every raw toFixed goes through
+// this rather than assuming a number is there.
+const fixed = (v, d) =>
+  (v === null || v === undefined || Number.isNaN(v)) ? "–" : v.toFixed(d);
+
 function el(name, attrs) {
   const n = document.createElementNS(SVG, name);
   for (const k in attrs) n.setAttribute(k, attrs[k]);
@@ -218,17 +225,26 @@ function render() {
 
   reading($("t-outdoor"), o.temp, F);
   reading($("t-diff"), o.diff, F);
-  $("t-diff").insertAdjacentHTML("beforeend",
-    ` <span class="stamp ${o.diff >= 0 ? "trend-up" : "trend-down"}">` +
-    `${o.diff >= 0 ? "warmer" : "colder"}</span>`);
+  // Only label a direction when there is a figure to have one.
+  if (o.diff !== null && o.diff !== undefined) {
+    $("t-diff").insertAdjacentHTML("beforeend",
+      ` <span class="stamp ${o.diff >= 0 ? "trend-up" : "trend-down"}">` +
+      `${o.diff >= 0 ? "warmer" : "colder"}</span>`);
+  }
   reading($("t-min"), o.min, F);
   reading($("t-max"), o.max, F);
   $("t-min-at").textContent = o.minAt;
   $("t-max-at").textContent = o.maxAt;
+  // Observed extremes where the source has them, forecast figures where it
+  // does not, so the panel never claims more than it knows.
+  $("t-min-label").textContent = o.minLabel || "Today's Low";
+  $("t-max-label").textContent = o.maxLabel || "Today's High";
   reading($("t-trend"), o.trend, F + "/hr");
-  $("t-trend").classList.add(o.trend >= 0 ? "trend-up" : "trend-down");
-  $("t-trend").firstChild.textContent =
-    (o.trend >= 0 ? "+" : "") + $("t-trend").firstChild.textContent;
+  if (o.trend !== null && o.trend !== undefined) {
+    $("t-trend").classList.add(o.trend >= 0 ? "trend-up" : "trend-down");
+    $("t-trend").firstChild.textContent =
+      (o.trend >= 0 ? "+" : "") + $("t-trend").firstChild.textContent;
+  }
   reading($("t-feels"), o.feels, F);
   $("t-hum").textContent = o.humidity;
   reading($("t-dew"), o.dew, F);
@@ -268,28 +284,30 @@ function render() {
   $("s-psh").textContent  = s.peakSun;
   $("s-band").textContent = s.band;
 
-  const inch = (v) =>
-    '<span class="whole">' + v.toFixed(2) + '</span><span class="unit">in</span>';
+  const inch = (v) => (v === null || v === undefined)
+    ? '<span class="whole">–</span>'
+    : '<span class="whole">' + v.toFixed(2) + '</span><span class="unit">in</span>';
   $("r-today").innerHTML     = inch(r.today);
   $("r-yesterday").innerHTML = inch(r.yesterday);
   $("r-month").innerHTML     = inch(r.month);
   $("r-year").innerHTML      = inch(r.year);
   $("r-state").textContent   = r.state;
-  $("r-rate").textContent    = r.rate.toFixed(2) + " in/hr";
+  $("r-rate").textContent    = fixed(r.rate, 2) + " in/hr";
   // 0 – 2 in/hr across the bar; heavy rain is about 0.3, violent about 2.
-  $("r-bar").style.width = Math.min(100, r.rate / 2 * 100).toFixed(1) + "%";
+  $("r-bar").style.width = Math.min(100, (r.rate || 0) / 2 * 100).toFixed(1) + "%";
 
-  $("b-slp").textContent   = b.slp.toFixed(2);
-  $("b-low").innerHTML     = '<span class="whole">' + b.low.toFixed(2) + "</span>";
-  $("b-high").innerHTML    = '<span class="whole">' + b.high.toFixed(2) + "</span>";
+  $("b-slp").textContent   = fixed(b.slp, 2);
+  $("b-low").innerHTML     = '<span class="whole">' + fixed(b.low, 2) + "</span>";
+  $("b-high").innerHTML    = '<span class="whole">' + fixed(b.high, 2) + "</span>";
   $("b-low-at").textContent  = b.lowAt;
   $("b-high-at").textContent = b.highAt;
   $("b-trend").innerHTML   = '<span class="whole">' + b.trend + "</span>";
-  $("b-rate").textContent  = (b.rate < 0 ? "−" : "+") +
-                             Math.abs(b.rate).toFixed(3) + " inHg/hr";
+  $("b-rate").textContent  = (b.rate === null || b.rate === undefined) ? "–"
+    : (b.rate < 0 ? "−" : "+") + Math.abs(b.rate).toFixed(3) + " inHg/hr";
   $("b-verdict").textContent = b.verdict;
   drawBarometer();
 
+  $("sg-title").textContent   = sg.title || "Sager Forecast";
   $("sg-weather").textContent = sg.weather;
   $("sg-when").textContent    = sg.when;
   $("sg-dir").textContent     = sg.dir;

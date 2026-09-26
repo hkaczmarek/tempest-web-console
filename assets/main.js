@@ -22,8 +22,12 @@
       (cfg.location || "");
   }
 
-  const fetchData = () =>
-    mode === "homeassistant" ? Sources.homeAssistant(cfg) : Sources.demo();
+  const SOURCES = {
+    demo:          () => Sources.demo(),
+    tempest:       () => Sources.tempest(cfg),
+    homeassistant: () => Sources.homeAssistant(cfg)
+  };
+  const fetchData = SOURCES[mode] || SOURCES.demo;
 
   let lastGood = null;
 
@@ -32,16 +36,25 @@
       const data = await fetchData();
       lastGood = data;
       TempestConsole.update(data);
+      const stamp = new Date().toLocaleTimeString("en-US",
+        { hour: "numeric", minute: "2-digit", hour12: true });
       note.textContent = mode === "demo"
         ? "Demo values. Copy config.example.js to config.js to read a live station."
-        : "Updated " + new Date().toLocaleTimeString("en-US",
-            { hour: "numeric", minute: "2-digit", hour12: true });
+        : "Updated " + stamp + " \u00b7 " +
+          (mode === "tempest" ? "WeatherFlow Tempest API" : "Home Assistant");
       note.style.color = "";
     } catch (err) {
       console.error(err);
+      // A blocked cross-origin request surfaces as a bare "Failed to fetch",
+      // which tells the reader nothing. Name the likely cause instead.
+      const blocked = /failed to fetch|networkerror|load failed/i.test(err.message);
+      const why = blocked
+        ? "the browser blocked the request - check the URL, and CORS if the " +
+          "page is not served from the same host"
+        : err.message;
       note.textContent = lastGood
-        ? "Last update failed (" + err.message + ") - showing the previous reading."
-        : "Could not reach the data source: " + err.message;
+        ? "Last update failed (" + why + ") - showing the previous reading."
+        : "Could not reach the data source: " + why;
       note.style.color = "var(--hot)";
     }
   }

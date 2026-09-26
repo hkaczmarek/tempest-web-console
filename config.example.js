@@ -10,16 +10,50 @@
 
 window.CONSOLE_CONFIG = {
 
-  // "demo" or "homeassistant"
-  source: "homeassistant",
+  /* Which source to read.
+   *
+   *   "demo"           a fixed snapshot; connects to nothing
+   *   "tempest"        WeatherFlow's cloud API - works from any browser,
+   *                    anywhere, with a read-only token
+   *   "homeassistant"  your own Home Assistant - adds Sager, month and
+   *                    year rainfall, and figures derived from history
+   *
+   * Start with "tempest". It needs one token and two settings.
+   */
+  source: "tempest",
 
   // Shown in the header bar.
   station:  "Tempest ST-00222100",
   location: "Canyon Country, CA",
 
-  // How often to re-read the station, in seconds. The Tempest itself
-  // reports about every minute, so there is nothing to gain below 30.
+  // How often to re-read the station, in seconds. The Tempest reports
+  // about once a minute, so there is nothing to gain below 30.
   refreshSeconds: 30,
+
+  /* ── WeatherFlow Tempest API ───────────────────────────────────────
+   * Token: sign in at tempestwx.com, then
+   *   Settings -> Data Authorizations -> Create Token
+   * It is read-only and scoped to your own stations.
+   *
+   * To find your ids, open this page, open the browser console and run:
+   *   Sources.tempestStations("your-token-here")
+   * It prints a table of station and device ids.
+   *
+   * deviceId is optional. With it the console shows today's OBSERVED
+   * high and low, the day's max gust and peak sun hours. Without it the
+   * temperature panel falls back to the forecast high and low and says
+   * so on its labels.
+   * -------------------------------------------------------------- */
+  tempest: {
+    stationId: 0,
+    deviceId:  null,
+    token:     "PASTE_YOUR_TEMPEST_PERSONAL_ACCESS_TOKEN_HERE"
+  },
+
+  /* ── Home Assistant ────────────────────────────────────────────────
+   * Only used when source is "homeassistant". Everything below this
+   * point can be ignored until then.
+   * -------------------------------------------------------------- */
 
   // Home Assistant's address as this browser reaches it. Leave as ""
   // when the console is served from Home Assistant itself (that is,

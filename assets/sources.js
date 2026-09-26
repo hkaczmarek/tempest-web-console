@@ -153,6 +153,251 @@ const Sources = (() => {
     };
   }
 
+  // ── WeatherFlow Tempest source ────────────────────────────────────
+  //
+  // Reads the station straight from WeatherFlow's cloud API. Two calls
+  // cover almost the whole console:
+  //
+  //   better_forecast        current conditions, the ten day forecast,
+  //                          sunrise and sunset
+  //   observations/stn/{id}  precipitation totals, lightning counts,
+  //                          solar radiation
+  //
+  // A third, optional call to the device endpoint supplies today's
+  // observed extremes. It needs a device id and is skipped without one.
+  //
+  // The token is a personal access token from the Tempest web app. It is
+  // read-only and scoped to your own stations, which makes this source a
+  // great deal safer to deploy than a Home Assistant token.
+
+  const TEMPEST = "https://swd.weatherflow.com/swd/rest";
+  const UNITS = "units_temp=f&units_wind=mph&units_pressure=inhg" +
+                "&units_precip=in&units_distance=mi";
+
+  async function tget(path) {
+    const res = await fetch(TEMPEST + path);
+    if (!res.ok) throw new Error("Tempest API " + res.status + " on " + path.split("?")[0]);
+    return res.json();
+  }
+
+  /* Raw device observations, so the console can show today's observed
+     high and low rather than the forecast's. The obs_st row is a fixed
+     array of metric values; only four of its slots are wanted here.
+
+     0 epoch   2 wind avg   3 wind gust   7 air temp   11 solar radiation */
+  async function tempestDeviceDay(deviceId, token) {
+    const rows = await tget("/observations/device/" + deviceId +
+                            "?day_offset=0&token=" + encodeURIComponent(token));
+    const obs = (rows && rows.obs) || [];
+    return obs
+      .filter((r) => Array.isArray(r) && r.length > 11)
+      .map((r) => ({
+        t: new Date(r[0] * 1000),
+        tempF: r[7] === null ? null : r[7] * 9 / 5 + 32,
+        gustMph: r[3] === null ? null : r[3] * 2.236936,
+        solar: r[11]
+      }));
+  }
+
+  async function tempest(cfg) {
+    const t = cfg.tempest || {};
+    if (!t.stationId || !t.token) {
+      throw new Error("Set tempest.stationId and tempest.token in config.js");
+    }
+    const tok = encodeURIComponent(t.token);
+    const now = new Date();
+
+    const [fc, obsResp] = await Promise.all([
+      tget("/better_forecast?station_id=" + t.stationId + "&token=" + tok + "&" + UNITS),
+      tget("/observations/stn/" + t.stationId + "?token=" + tok + "&" + UNITS)
+        .catch(() => null)
+    ]);
+
+    const cc  = (fc && fc.current_conditions) || {};
+    const day = (fc && fc.forecast && fc.forecast.daily && fc.forecast.daily[0]) || {};
+    const obs = (obsResp && obsResp.obs && obsResp.obs[0]) || {};
+
+    // Prefer a value the station reports; fall back to the other call.
+    const pick = (...vals) => {
+      for (const v of vals) if (v !== undefined && v !== null) return v;
+      return null;
+    };
+
+    // ── Today's extremes, if a device id was supplied ────────────────
+    let tMin = null, tMax = null, tMinAt = "—", tMaxAt = "—";
+    let gustMax = null, peakSun = null;
+    let minLabel = "Forecast Low", maxLabel = "Forecast High";
+
+    if (t.deviceId) {
+      try {
+        const rows = await tempestDeviceDay(t.deviceId, t.token);
+        const temps = rows.filter((r) => r.tempF !== null);
+        if (temps.length) {
+          let lo = temps[0], hi = temps[0];
+          for (const r of temps) { if (r.tempF < lo.tempF) lo = r; if (r.tempF > hi.tempF) hi = r; }
+          tMin = lo.tempF; tMax = hi.tempF;
+          tMinAt = clock(lo.t); tMaxAt = clock(hi.t);
+          minLabel = "Today's Low"; maxLabel = "Today's High";
+        }
+        const gusts = rows.map((r) => r.gustMph).filter((v) => v !== null);
+        if (gusts.length) gustMax = Math.max(...gusts);
+
+        const solar = rows.filter((r) => Number.isFinite(r.solar));
+        if (solar.length > 1) {
+          let wh = 0;
+          for (let i = 1; i < solar.length; i++) {
+            const dt = (solar[i].t - solar[i - 1].t) / 3600000;
+            wh += (solar[i].solar + solar[i - 1].solar) / 2 * dt;
+          }
+          peakSun = Math.round(wh / 1000 * 10) / 10;
+        }
+      } catch (e) { /* the optional call; the panel falls back to forecast */ }
+    }
+    if (tMin === null) { tMin = day.air_temp_low ?? null; tMax = day.air_temp_high ?? null; }
+
+    // ── Sun ──────────────────────────────────────────────────────────
+    const rise = day.sunrise ? new Date(day.sunrise * 1000) : null;
+    const set  = day.sunset  ? new Date(day.sunset  * 1000) : null;
+    let progress = 0, remain = 0, till = "Sunrise";
+    if (rise && set) {
+      progress = Math.max(0, Math.min(1, (now - rise) / (set - rise)));
+      if (now < rise)     { remain = rise - now; till = "Sunrise"; }
+      else if (now < set) { remain = set - now;  till = "Sunset"; }
+    }
+
+    // ── Wind ─────────────────────────────────────────────────────────
+    const bearing = pick(cc.wind_direction, obs.wind_direction, 0);
+    const card = compass(bearing);
+    const windNow  = pick(obs.wind_avg, cc.wind_avg, 0);
+    const windGust = pick(obs.wind_gust, cc.wind_gust, 0);
+
+    // ── Pressure ─────────────────────────────────────────────────────
+    const slp = pick(cc.sea_level_pressure, obs.sea_level_pressure);
+    const trendWord = String(pick(cc.pressure_trend, "steady")).toLowerCase();
+    const TRENDS = {
+      falling: ["Falling", "Conditions may worsen", "Rain becoming more likely"],
+      steady:  ["Steady", "Conditions unchanged", "No marked change expected"],
+      rising:  ["Rising", "Conditions may improve", "Fair weather becoming more likely"]
+    };
+    const [pTrend, verdict, outlookText] = TRENDS[trendWord] || TRENDS.steady;
+
+    const radiation = pick(obs.solar_radiation, cc.solar_radiation, 0);
+    const uv = pick(cc.uv, obs.uv, 0);
+    const rate = pick(obs.precip_accum_last_1hr, 0);
+    const lastEpoch = pick(obs.lightning_strike_last_epoch, null);
+
+    const title = (s) => String(s || "")
+      .replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+
+    return {
+      forecast: {
+        wind: Math.round(pick(cc.wind_avg, 0)) + " mph " + card.short,
+        text: cc.conditions || title(day.conditions) || "—",
+        temp: pick(cc.air_temperature, null),
+        low:  day.air_temp_low  === undefined ? null : Math.round(day.air_temp_low),
+        high: day.air_temp_high === undefined ? null : Math.round(day.air_temp_high),
+        pop:  Math.round(pick(day.precip_probability, 0)),
+        daily: Math.round(pick(day.precip_probability, 0)) + "%",
+        issued: clock(now)
+      },
+      outdoor: {
+        temp: pick(cc.air_temperature, null),
+        diff: null,                                   // needs yesterday's obs
+        trend: null,                                  // needs an hour of history
+        min: tMin, minAt: tMinAt, max: tMax, maxAt: tMaxAt,
+        minLabel, maxLabel,
+        feels: pick(cc.feels_like, null),
+        feelsText: feelsText(pick(cc.feels_like, null)),
+        humidity: Math.round(pick(cc.relative_humidity, 0)),
+        dew: pick(cc.dew_point, null)
+      },
+      wind: {
+        avg:  Math.round(pick(cc.wind_avg, 0) * 10) / 10,
+        max:  gustMax === null ? null : Math.round(gustMax),
+        now:  Math.round(windNow * 10) / 10,
+        gust: Math.round(windGust * 10) / 10,
+        scale: Math.max(15, Math.ceil((gustMax || windGust) / 5) * 5),
+        bearing: Math.round(bearing),
+        cardinal: card.short,
+        cardinalLong: cc.wind_direction_cardinal || card.long,
+        beaufort: beaufort(windNow)
+      },
+      solar: {
+        radiation: Math.round(radiation),
+        uv: Math.round(uv * 10) / 10,
+        uvBand: uvBand(uv),
+        rise: rise ? clock(rise) : "—",
+        set:  set  ? clock(set)  : "—",
+        progress,
+        remainH: String(Math.max(0, Math.floor(remain / 3600000))),
+        remainM: String(Math.max(0, Math.floor((remain % 3600000) / 60000))).padStart(2, "0"),
+        till,
+        peakSun,
+        band: solarBand(radiation)
+      },
+      rain: {
+        today:     pick(obs.precip_accum_local_day, 0),
+        yesterday: pick(obs.precip_accum_local_yesterday, 0),
+        month: null,                                  // not exposed by the API
+        year:  null,
+        rate,
+        state: rate > 0 ? "Currently Raining" : "Currently Dry"
+      },
+      barometer: {
+        slp,
+        low: null, lowAt: "—", high: null, highAt: "—",
+        trend: pTrend, rate: null, verdict
+      },
+      /* Sager needs a METAR feed the Tempest API does not carry. What the
+         station itself supports is a pressure-tendency outlook, so that is
+         what this reports - under its own name rather than Sager's. */
+      sager: {
+        title: "Pressure Outlook",
+        weather: pTrend === "Steady" ? "No change" : pTrend,
+        when: verdict.toLowerCase(),
+        dir: card.short,
+        force: beaufort(windNow),
+        temp: pTrend,
+        text: outlookText + ". Sea level pressure " +
+              (slp === null ? "unknown" : slp.toFixed(2) + " inHg") +
+              ", " + trendWord + ", wind " + card.long.toLowerCase() +
+              " at " + Math.round(windNow) + " mph. A full Sager forecast " +
+              "needs a METAR feed; switch to the Home Assistant source for it.",
+        dial: slp === null ? "—" : slp.toFixed(2) + " inHg " + pTrend.toLowerCase(),
+        src: "Tempest",
+        at: cc.time ? clock(new Date(cc.time * 1000)) : clock(now)
+      },
+      moon: moon(now),
+      lightning: {
+        dist: obs.lightning_strike_last_distance == null
+                ? null : Math.round(obs.lightning_strike_last_distance),
+        when: lastEpoch
+          ? "Last strike " + clock(new Date(lastEpoch * 1000))
+          : "No strikes detected",
+        hour:  pick(obs.lightning_strike_count_last_1hr, 0),
+        today: pick(obs.lightning_strike_count, 0),
+        yesterday: pick(obs.lightning_strike_count_last_3hr, 0)
+      }
+    };
+  }
+
+  /* One-off helper for setup: prints your station and device ids.
+     Open the console on the page and run  Sources.tempestStations("<token>") */
+  async function tempestStations(token) {
+    const r = await tget("/stations?token=" + encodeURIComponent(token));
+    const out = (r.stations || []).map((s) => ({
+      station_id: s.station_id,
+      name: s.name,
+      devices: (s.devices || [])
+        .filter((d) => d.device_type === "ST")
+        .map((d) => ({ device_id: d.device_id, serial: d.serial_number }))
+    }));
+    console.table(out.flatMap((s) => s.devices.map((d) => ({
+      station: s.name, stationId: s.station_id, deviceId: d.device_id, serial: d.serial
+    }))));
+    return out;
+  }
+
   // ── Home Assistant source ─────────────────────────────────────────
 
   function haClient(cfg) {
@@ -433,5 +678,6 @@ const Sources = (() => {
     };
   }
 
-  return { demo, homeAssistant, moon, compass, beaufort };
+  return { demo, tempest, tempestStations, homeAssistant,
+           moon, compass, beaufort };
 })();
