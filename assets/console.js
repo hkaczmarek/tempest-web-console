@@ -34,15 +34,23 @@ function el(name, attrs) {
 // not 89 with a stray .10 after it.
 function reading(el_, value, unit, decimals = 1) {
   if (value === null || value === undefined || Number.isNaN(value)) {
-    el_.innerHTML = '<span class="whole">–</span>';
+    el_.innerHTML = '<span class="whole">–</span>' +
+                    (unit ? '<span class="unit">' + unit + '</span>' : '');
     return;
   }
-  const r = Number(value.toFixed(decimals));
-  const whole = Math.trunc(r);
-  const tenth = Math.abs(Math.round(r * 10)) % 10;
+  // One rounding, then split the result - so the whole and the fraction can
+  // never disagree. 89.96 becomes 90.0, never 89 with a stray .10 beside it.
+  // Rainfall wants two places, so the fraction is zero-padded rather than
+  // assumed to be a single digit.
+  const p = Math.pow(10, decimals);
+  const r = Math.round(value * p);
+  const abs = Math.abs(r);
+  const whole = Math.trunc(abs / p);
+  const frac = String(abs % p).padStart(decimals, "0");
+  const sign = r < 0 ? "-" : "";
   el_.innerHTML =
-    '<span class="whole">' + whole + '</span>' +
-    (decimals ? '<span class="tenth">.' + tenth + '</span>' : '') +
+    '<span class="whole">' + sign + whole + '</span>' +
+    (decimals ? '<span class="tenth">.' + frac + '</span>' : '') +
     (unit ? '<span class="unit">' + unit + '</span>' : '');
 }
 
@@ -254,8 +262,8 @@ function render() {
 
   $("w-avg").textContent  = w.avg;
   $("w-max").textContent  = w.max;
-  $("w-now").textContent  = w.now;
-  $("w-gust").textContent = w.gust;
+  reading($("w-now"),  w.now,  "mph");
+  reading($("w-gust"), w.gust, "mph");
   $("w-deg").textContent  = w.bearing + "°";
   $("w-spd").textContent  = w.avg;
   $("w-card").textContent = w.cardinalLong;
@@ -265,8 +273,8 @@ function render() {
   $("w-gust-bar").style.width = pct(w.gust);
   drawWind();
 
-  $("s-rad").textContent = s.radiation;
-  $("s-uv").textContent  = s.uv;
+  reading($("s-rad"), s.radiation, "W/m²", 0);
+  reading($("s-uv"),  s.uv,  "");
   $("s-uv-band").textContent = s.uvBand;
   $("s-uv-band").style.background = "#ef6c00";
   $("s-uv-band").style.color = "#ffffff";
@@ -283,24 +291,21 @@ function render() {
   $("s-remain-h").textContent = s.remainH;
   $("s-remain-m").textContent = s.remainM;
   $("s-till").textContent = s.till;
-  $("s-psh").textContent  = s.peakSun;
+  reading($("s-psh"), s.peakSun, "hr");
   $("s-band").textContent = s.band;
 
-  const inch = (v) => (v === null || v === undefined)
-    ? '<span class="whole">–</span>'
-    : '<span class="whole">' + v.toFixed(2) + '</span><span class="unit">in</span>';
-  $("r-today").innerHTML     = inch(r.today);
-  $("r-yesterday").innerHTML = inch(r.yesterday);
-  $("r-month").innerHTML     = inch(r.month);
-  $("r-year").innerHTML      = inch(r.year);
+  reading($("r-today"),     r.today,     "in", 2);
+  reading($("r-yesterday"), r.yesterday, "in", 2);
+  reading($("r-month"),     r.month,     "in", 2);
+  reading($("r-year"),      r.year,      "in", 2);
   $("r-state").textContent   = r.state;
   $("r-rate").textContent    = fixed(r.rate, 2) + " in/hr";
   // 0 – 2 in/hr across the bar; heavy rain is about 0.3, violent about 2.
   $("r-bar").style.width = Math.min(100, (r.rate || 0) / 2 * 100).toFixed(1) + "%";
 
   $("b-slp").textContent   = fixed(b.slp, 2);
-  $("b-low").innerHTML     = '<span class="whole">' + fixed(b.low, 2) + "</span>";
-  $("b-high").innerHTML    = '<span class="whole">' + fixed(b.high, 2) + "</span>";
+  reading($("b-low"),  b.low,  "", 2);
+  reading($("b-high"), b.high, "", 2);
   $("b-low-at").textContent  = b.lowAt;
   $("b-high-at").textContent = b.highAt;
   $("b-trend").innerHTML   = '<span class="whole">' + b.trend + "</span>";
