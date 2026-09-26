@@ -1,0 +1,8 @@
+# Holds a long-lived access token. Never commit it.
+config.js
+
+# Editors and OS cruft
+.DS_Store
+.vscode/
+.idea/
+*.swp
