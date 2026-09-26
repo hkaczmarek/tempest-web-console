@@ -32,10 +32,17 @@ img { max-width: 100%; }
        spindly on a panel read from across a room, 400 is solid. */
     --read-weight: 300;
 
-    --gap: clamp(6px, 0.7vw, 11px);
-    --pad: clamp(10px, 1.0vw, 16px);
-    --u:   clamp(12px, 1.22vw, 21px);
+    /* The type scale follows BOTH dimensions. Width alone is enough on a
+       normal page, but inside a fixed-height frame - a Home Assistant panel
+       view, a wall tablet - a wide, short viewport would size the type off
+       the width and overflow the bottom. Taking the smaller of the two
+       keeps the whole console inside the frame without scrolling. */
+    --gap: clamp(5px, min(0.7vw, 1.1vh), 11px);
+    --pad: clamp(8px,  min(1.0vw, 1.6vh), 16px);
+    --u:   clamp(11px, min(1.22vw, 1.8vh), 21px);
   }
+
+  html, body { height: 100%; }
 
   body {
     margin: 0;
@@ -49,6 +56,7 @@ img { max-width: 100%; }
 
   .console {
     box-sizing: border-box;
+    min-height: 100%;
     padding: var(--gap) max(16px, var(--gap));
     display: flex;
     flex-direction: column;
@@ -193,7 +201,8 @@ img { max-width: 100%; }
     display: block;
     width: 100%;
     height: auto;
-    max-width: min(100%, 360px);
+    /* Also bounded by viewport height, for the same reason as the type. */
+    max-width: min(100%, 360px, 32vh);
     margin: 0 auto;
   }
 
