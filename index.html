@@ -9,7 +9,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap">
-<link rel="stylesheet" href="assets/console.css">
+<!-- Bump ?v= on all five when you change any asset, or browsers and the
+     Home Assistant iframe will keep serving the previous copy. -->
+<link rel="stylesheet" href="assets/console.css?v=3">
 </head>
 <body>
 
@@ -386,9 +388,9 @@
 <!-- Your own settings. Copy config.example.js to config.js and edit it.
      config.js is gitignored: it holds a token. Without it the console
      renders the built-in demo values. -->
-<script src="config.js" onerror="window.CONSOLE_CONFIG=window.CONSOLE_CONFIG||null"></script>
-<script src="assets/console.js"></script>
-<script src="assets/sources.js"></script>
-<script src="assets/main.js"></script>
+<script src="config.js?v=3" onerror="window.CONSOLE_CONFIG=window.CONSOLE_CONFIG||null"></script>
+<script src="assets/console.js?v=3"></script>
+<script src="assets/sources.js?v=3"></script>
+<script src="assets/main.js?v=3"></script>
 </body>
 </html>
