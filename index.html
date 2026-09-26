@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="A browser replica of the WeatherFlow PiConsole screen, driven by Home Assistant.">
+<title>Tempest Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/console.css">
+</head>
+<body>
+
+<div class="console">
+
+  <header class="bar">
+    <div class="station">Tempest <b>ST-00222100</b> &nbsp;·&nbsp; Canyon Country, CA</div>
+    <div class="when">
+      <span class="date" id="c-date">Sat, 26 Sep 2026</span>
+      <span class="time" id="c-time">12:40:22 PM</span>
+    </div>
+  </header>
+
+  <div class="grid">
+
+    <!-- ── Slot 1: Forecast / Sager / Moon / Lightning ───────── -->
+    <section class="panel p-forecast" id="pane-forecast">
+      <h2>Forecast</h2>
+      <div class="row r2">
+        <div class="stack">
+          <div class="label">Conditions</div>
+          <div class="center" id="f-icon"></div>
+        </div>
+        <div class="stack">
+          <div class="label">Wind</div>
+          <div class="center read small"><span class="whole" id="f-wind">11 mph S</span></div>
+          <div class="sub" id="f-text" style="margin-top:0.4em">Partly cloudy until 3 PM</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="row r2">
+        <div class="stack">
+          <div class="label">Temperature</div>
+          <div class="center read medium" id="f-temp"></div>
+          <div class="center stamp">
+            <span class="t-min">L <span id="f-low"></span></span>
+            &nbsp;·&nbsp;
+            <span class="t-max">H <span id="f-high"></span></span>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="label">Chance of Rain</div>
+          <div class="center read medium"><span class="whole" id="f-pop">0</span><span class="unit">%</span></div>
+          <div class="center stamp">Daily <span id="f-daily">0%</span></div>
+        </div>
+      </div>
+      <div class="stamp right">Issued <span id="f-issued">1 PM</span></div>
+    </section>
+
+    <section class="panel p-sager" id="pane-sager" hidden>
+      <h2>Sager Forecast</h2>
+      <div class="stack">
+        <div class="label">Outlook</div>
+        <div class="word hero" style="color:var(--teal)" id="sg-weather">Fair</div>
+        <div class="stamp center">Change expected: <span id="sg-when">no marked change</span></div>
+      </div>
+      <div class="divider"></div>
+      <div class="row r3">
+        <div class="stack">
+          <div class="label">Wind From</div>
+          <div class="word" id="sg-dir">SW</div>
+        </div>
+        <div class="stack">
+          <div class="label">Wind Force</div>
+          <div class="word" id="sg-force">Moderate</div>
+        </div>
+        <div class="stack">
+          <div class="label">Temperature</div>
+          <div class="word" id="sg-temp">Steady</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="sub left" id="sg-text"></div>
+      <div class="row r2">
+        <div class="stamp left">Dial <span id="sg-dial" style="color:var(--teal)">B, 3, 1, 2, 2, 4</span></div>
+        <div class="stamp right">From <span id="sg-src">KWHP</span> · <span id="sg-at">11:53 AM</span></div>
+      </div>
+    </section>
+
+    <section class="panel p-moon" id="pane-moon" hidden>
+      <h2>Moon</h2>
+      <div class="center"><svg class="dial" viewBox="0 0 300 150" id="m-dial" role="img" aria-label="Moon phase"></svg></div>
+      <div class="row r2">
+        <div class="stack">
+          <div class="label">Phase</div>
+          <div class="word" id="m-phase">Waning Gibbous</div>
+        </div>
+        <div class="stack">
+          <div class="label">Illumination</div>
+          <div class="center read small"><span class="whole" id="m-illum">88</span><span class="unit">%</span></div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="row r3">
+        <div class="stack">
+          <div class="label">Moonrise</div>
+          <div class="sub" id="m-rise">8:41 PM</div>
+        </div>
+        <div class="stack">
+          <div class="label">Moonset</div>
+          <div class="sub" id="m-set">10:27 AM</div>
+        </div>
+        <div class="stack">
+          <div class="label">Next Full</div>
+          <div class="sub" id="m-full">6 Oct</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel p-lightning" id="pane-lightning" hidden>
+      <h2>Lightning</h2>
+      <div class="stack">
+        <div class="label">Last Strike</div>
+        <div class="center read big"><span class="whole" id="l-dist">—</span><span class="unit" id="l-dist-u"></span></div>
+        <div class="center sub" id="l-when">No strikes detected</div>
+      </div>
+      <div class="divider"></div>
+      <div class="row r3">
+        <div class="stack">
+          <div class="label">Last Hour</div>
+          <div class="center read small"><span class="whole" id="l-hour">0</span></div>
+        </div>
+        <div class="stack">
+          <div class="label">Today</div>
+          <div class="center read small"><span class="whole" id="l-today">0</span></div>
+        </div>
+        <div class="stack">
+          <div class="label">Yesterday</div>
+          <div class="center read small"><span class="whole" id="l-yest">0</span></div>
+        </div>
+      </div>
+      <div class="stamp center">Detection radius 40 km</div>
+    </section>
+
+    <!-- ── Temperature ──────────────────────────────────────── -->
+    <section class="panel p-temperature">
+      <h2>Temperature</h2>
+      <div class="row r2">
+        <div class="stack">
+          <div class="label">Outdoor</div>
+          <div class="center read big" id="t-outdoor"></div>
+        </div>
+        <div class="stack">
+          <div class="label">24 hr Difference</div>
+          <div class="center read medium" id="t-diff"></div>
+          <div class="center" style="margin-top:0.5em">
+            <div class="label">Trend</div>
+            <div class="center read small" id="t-trend"></div>
+          </div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="row r2">
+        <div class="stack">
+          <div class="label t-min">Today's Low</div>
+          <div class="center read small t-min" id="t-min"></div>
+          <div class="center stamp" id="t-min-at">7:02 AM</div>
+        </div>
+        <div class="stack">
+          <div class="label t-max">Today's High</div>
+          <div class="center read small t-max" id="t-max"></div>
+          <div class="center stamp" id="t-max-at">11:32 AM</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="row r3">
+        <div class="stack">
+          <div class="label">Feels Like</div>
+          <div class="center read small" id="t-feels"></div>
+        </div>
+        <div class="stack">
+          <div class="label">Humidity</div>
+          <div class="center read small"><span class="whole" id="t-hum">32</span><span class="unit">%</span></div>
+        </div>
+        <div class="stack">
+          <div class="label">Dew Point</div>
+          <div class="center read small" id="t-dew"></div>
+        </div>
+      </div>
+      <div class="feels">
+        <svg viewBox="0 0 48 44" aria-hidden="true">
+          <g fill="#f0a050">
+            <circle cx="13" cy="7" r="5.2"/>
+            <path d="M6.2 15h13.6a2 2 0 0 1 2 2.2l-1.5 11.4a1.6 1.6 0 0 1-3.2-.1l.2-6.4-1 20.4a2 2 0 0 1-4 0l-.5-12.3-.5 12.3a2 2 0 0 1-4 0l-1-20.4.2 6.4a1.6 1.6 0 0 1-3.2.1L4.2 17.2A2 2 0 0 1 6.2 15Z"/>
+            <circle cx="29" cy="7" r="5.2"/>
+            <path d="M29 15c3.6 0 6.4 1.6 7.4 4.4l3.2 9a1.7 1.7 0 0 1-3.1 1.2l-2.6-6-.3 1 3 8.2h-3.3v10.4a1.9 1.9 0 0 1-3.8 0V32.8h-1.2v10.4a1.9 1.9 0 0 1-3.8 0V32.8h-3.3l3-8.2-.3-1-2.6 6a1.7 1.7 0 0 1-3.1-1.2l3.2-9c1-2.8 3.8-4.4 7.4-4.4Z"/>
+          </g>
+          <path d="M43 12c0 2.2-1.6 3.6-3.4 3.6S36.2 14.2 36.2 12 39.6 5 39.6 5 43 9.8 43 12Z" fill="#4fc3d7"/>
+        </svg>
+        <span id="t-feels-text">Feeling hot</span>
+      </div>
+    </section>
+
+    <!-- ── Wind ─────────────────────────────────────────────── -->
+    <section class="panel p-wind">
+      <h2>Wind Speed</h2>
+      <svg class="dial" viewBox="0 0 300 208" role="img" aria-labelledby="w-title">
+        <title id="w-title">Wind direction and speed</title>
+        <g id="w-ring"></g>
+        <polygon id="w-needle" points="150,18 143,32 157,32" fill="#f05e40"/>
+        <text x="150" y="98"  text-anchor="middle" font-size="30" font-weight="200" fill="#ffffff" id="w-deg">232°</text>
+        <text x="150" y="124" text-anchor="middle" font-size="17" font-weight="500" fill="#9ccc65" id="w-card">South West</text>
+        <text x="150" y="152" text-anchor="middle" font-size="24" font-weight="200" fill="#c8c8c8">
+          <tspan id="w-spd">0.5</tspan><tspan font-size="13" dx="4" fill="#6e6e6e">mph avg</tspan>
+        </text>
+      </svg>
+      <div class="row r2">
+        <div class="stack">
+          <div class="label">Wind</div>
+          <div class="center read small"><span class="whole" id="w-now">2.1</span><span class="unit">mph</span></div>
+          <div class="meter" style="--c:var(--green)"><i id="w-now-bar" style="width:14%"></i></div>
+        </div>
+        <div class="stack">
+          <div class="label">Gust</div>
+          <div class="center read small"><span class="whole" id="w-gust">4.5</span><span class="unit">mph</span></div>
+          <div class="meter" style="--c:var(--warm)"><i id="w-gust-bar" style="width:30%"></i></div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="row r3">
+        <div class="stack">
+          <div class="label">Avg</div>
+          <div class="sub" style="color:var(--warm)"><span id="w-avg">0.5</span> mph</div>
+        </div>
+        <div class="stack">
+          <div class="label">Max Gust</div>
+          <div class="sub" style="color:var(--hot)"><span id="w-max">11</span> mph</div>
+        </div>
+        <div class="stack">
+          <div class="label">Beaufort</div>
+          <div class="sub" id="w-beaufort">Light Air</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Solar | UV ───────────────────────────────────────── -->
+    <section class="panel p-solar">
+      <h2>Solar&nbsp;&nbsp;|&nbsp;&nbsp;UV</h2>
+      <div class="row r2">
+        <div class="stack">
+          <div class="label">Radiation</div>
+          <div class="center read medium">
+            <span class="whole" id="s-rad">888</span><span class="unit">W/m²</span>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="label">UV Index</div>
+          <div class="center" style="display:flex;align-items:center;justify-content:center;gap:0.55em">
+            <span class="read medium"><span class="whole" id="s-uv">7.7</span></span>
+            <span class="badge" id="s-uv-band">High</span>
+          </div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="stack">
+        <div class="row r2">
+          <div class="label left">Sunrise</div>
+          <div class="label right">Sunset</div>
+        </div>
+        <svg viewBox="0 0 300 30" preserveAspectRatio="none"
+             style="width:100%;height:calc(var(--u)*1.9);display:block" role="img" aria-label="Daylight progress">
+          <path id="s-track" d="M8 26 Q150 -14 292 26" fill="none" stroke="#2e2e2e" stroke-width="3"/>
+          <path id="s-done"  d="M8 26 Q150 -14 292 26" fill="none" stroke="#0e7c8a" stroke-width="3"/>
+          <circle id="s-sun" cx="150" cy="6" r="6" fill="#ffca28"/>
+        </svg>
+        <div class="row r2">
+          <div class="sub left" id="s-rise">6:44 AM</div>
+          <div class="sub right" id="s-set">6:44 PM</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="row r2">
+        <div class="stack">
+          <div class="label" id="s-phase-label">Daytime Left</div>
+          <div class="center read small">
+            <span class="whole" id="s-remain-h">6</span><span class="unit">hr</span>
+            <span class="whole" id="s-remain-m">04</span><span class="unit">min</span>
+          </div>
+          <div class="center stamp">Till <span id="s-till" style="color:var(--hot)">Sunset</span></div>
+        </div>
+        <div class="stack">
+          <div class="label">Peak Sun Hours</div>
+          <div class="center read small"><span class="whole" id="s-psh">2.7</span><span class="unit">hr</span></div>
+          <div class="center stamp">Solar <span id="s-band" style="color:var(--gold)">Moderate</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Rainfall ─────────────────────────────────────────── -->
+    <section class="panel p-rainfall">
+      <h2>Rainfall</h2>
+      <div class="row r2">
+        <div class="stack">
+          <div class="label">Today</div>
+          <div class="center read medium" id="r-today"></div>
+        </div>
+        <div class="stack">
+          <div class="label">Yesterday</div>
+          <div class="center read medium" id="r-yesterday"></div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="row r2">
+        <div class="stack">
+          <div class="label">This Month</div>
+          <div class="center read medium" id="r-month"></div>
+        </div>
+        <div class="stack">
+          <div class="label">This Year</div>
+          <div class="center read medium" id="r-year"></div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="stack">
+        <div class="row r2">
+          <div class="label left">Rain Rate</div>
+          <div class="sub right" id="r-rate">0.00 in/hr</div>
+        </div>
+        <div class="meter" style="--c:var(--cool)"><i id="r-bar" style="width:0%"></i></div>
+        <div class="scale"><span>Dry</span><span>Light</span><span>Moderate</span><span>Heavy</span></div>
+        <div class="sub" style="margin-top:0.3em" id="r-state">Currently Dry</div>
+      </div>
+    </section>
+
+    <!-- ── Barometer ────────────────────────────────────────── -->
+    <section class="panel p-barometer">
+      <h2>Barometer</h2>
+      <svg class="dial" viewBox="0 0 320 196" role="img" aria-labelledby="b-title">
+        <title id="b-title">Sea level pressure gauge</title>
+        <g id="b-bands"></g>
+        <g id="b-ticks"></g>
+        <polygon id="b-needle" points="0,0 0,0 0,0" fill="#f05e40"/>
+        <text x="160" y="120" text-anchor="middle" font-size="13" font-weight="600"
+              letter-spacing="1.6" fill="#7a7a7a">SLP</text>
+        <text x="160" y="162" text-anchor="middle" font-size="42" font-weight="200" fill="#ffffff" id="b-slp">29.95</text>
+        <text x="160" y="184" text-anchor="middle" font-size="14" fill="#7a7a7a">inHg</text>
+      </svg>
+      <div class="divider"></div>
+      <div class="row r3">
+        <div class="stack">
+          <div class="label t-min">Low</div>
+          <div class="center read small t-min" id="b-low"></div>
+          <div class="center stamp" id="b-low-at">5:08 AM</div>
+        </div>
+        <div class="stack">
+          <div class="label t-max">High</div>
+          <div class="center read small t-max" id="b-high"></div>
+          <div class="center stamp" id="b-high-at">9:12 AM</div>
+        </div>
+        <div class="stack">
+          <div class="label">Trend</div>
+          <div class="center read small" style="color:var(--green)" id="b-trend">Steady</div>
+          <div class="center stamp" id="b-rate">−0.009 inHg/hr</div>
+        </div>
+      </div>
+      <div class="sub" id="b-verdict">Conditions unchanged</div>
+    </section>
+
+  </div>
+
+  <div class="footer">
+    <button class="btn" type="button" id="btn-sager"     data-pane="sager"     aria-pressed="false" style="--tint:#80cbc4">Sager</button>
+    <button class="btn" type="button" id="btn-moon"      data-pane="moon"      aria-pressed="false" style="--tint:#b0bec5">Moon</button>
+    <button class="btn" type="button" id="btn-lightning" data-pane="lightning" aria-pressed="false" style="--tint:#ff8a65">Lightning</button>
+  </div>
+
+  <p class="note" id="note">
+    Demo values, captured 26 Sep 2026 12:40 PM. Clock is live.
+  </p>
+</div>
+
+<!-- Your own settings. Copy config.example.js to config.js and edit it.
+     config.js is gitignored: it holds a token. Without it the console
+     renders the built-in demo values. -->
+<script src="config.js" onerror="window.CONSOLE_CONFIG=window.CONSOLE_CONFIG||null"></script>
+<script src="assets/console.js"></script>
+<script src="assets/sources.js"></script>
+<script src="assets/main.js"></script>
+</body>
+</html>

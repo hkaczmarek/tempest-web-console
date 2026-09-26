@@ -1,0 +1,246 @@
+/* ------------------------------------------------------------------ *
+ * Tempest Web Console
+ * A browser replica of the WeatherFlow PiConsole screen.
+ * ------------------------------------------------------------------ */
+
+*, *::before, *::after { box-sizing: border-box; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+:root {
+    color-scheme: dark;
+
+    --bg:        #000000;
+    --panel:     #000000;
+    --edge:      #9a9a9a;   /* the console's own thin light frame */
+    --rule:      #3a3a3a;   /* dividers inside a panel */
+    --ink:       #c8c8c8;
+    --ink-dim:   #7a7a7a;
+    --ink-bright:#ffffff;
+
+    --cold:      #00a4b4;
+    --hot:       #f05e40;
+    --warm:      #f0a050;
+    --cool:      #4fc3d7;
+    --green:     #9ccc65;
+    --gold:      #ffca28;
+    --violet:    #b39ddb;
+    --sky:       #8ab4f8;
+    --teal:      #80cbc4;
+    --slate:     #b0bec5;
+
+    --gap: clamp(6px, 0.7vw, 11px);
+    --pad: clamp(10px, 1.0vw, 16px);
+    --u:   clamp(12px, 1.22vw, 21px);
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Inter, "Helvetica Neue", Arial, sans-serif;
+    font-weight: 300;
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .console {
+    box-sizing: border-box;
+    padding: var(--gap) max(16px, var(--gap));
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+  }
+
+  /* ── Header ───────────────────────────────────────────────── */
+  .bar {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: calc(var(--gap) * 0.6) var(--gap);
+    padding: calc(var(--gap) * 0.3) calc(var(--pad) * 0.4) calc(var(--gap) * 0.9);
+    border-bottom: 1px solid var(--rule);
+  }
+  .bar .station {
+    font-size: calc(var(--u) * 0.86);
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+  .bar .station b { color: var(--ink-bright); font-weight: 600; }
+  .bar .when { display: flex; align-items: baseline; gap: 0.7em; }
+  .bar .date { font-size: calc(var(--u) * 1.0); color: var(--ink); }
+  .bar .time {
+    font-size: calc(var(--u) * 1.55);
+    font-weight: 300;
+    color: var(--ink-bright);
+    letter-spacing: 0.01em;
+  }
+
+  /* ── Grid ─────────────────────────────────────────────────── */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--gap);
+  }
+
+  /* Content is spread down the panel rather than stacked at the top, so a
+     panel that is taller than its content (every panel sharing a row with a
+     dial) reads as generously set instead of half empty. */
+  .panel {
+    position: relative;
+    box-sizing: border-box;
+    border: 1px solid var(--edge);
+    border-radius: 5px;
+    background: var(--panel);
+    padding: calc(var(--pad) * 0.6) var(--pad) var(--pad);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: calc(var(--gap) * 0.9);
+    min-width: 0;
+  }
+
+  .panel > h2 {
+    margin: 0;
+    text-align: center;
+    font-size: calc(var(--u) * 1.0);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--accent, var(--ink-bright));
+    text-wrap: balance;
+  }
+
+  .p-forecast    { --accent: var(--sky); }
+  .p-temperature { --accent: var(--warm); }
+  .p-wind        { --accent: var(--green); }
+  .p-solar       { --accent: var(--gold); }
+  .p-rainfall    { --accent: var(--cool); }
+  .p-barometer   { --accent: var(--violet); }
+  .p-sager       { --accent: var(--teal); }
+  .p-moon        { --accent: var(--slate); }
+  .p-lightning   { --accent: var(--hot); }
+
+  .label {
+    font-weight: 600;
+    font-size: calc(var(--u) * 0.9);
+    color: var(--ink-bright);
+    text-align: center;
+    letter-spacing: 0.01em;
+  }
+  .sub { font-size: calc(var(--u) * 0.84); color: var(--ink); text-align: center; }
+  .dim { color: var(--ink-dim); }
+  .left  { text-align: left; }
+  .right { text-align: right; }
+
+  .row  { display: grid; gap: var(--gap); align-items: start; }
+  .r2   { grid-template-columns: 1fr 1fr; }
+  .r3   { grid-template-columns: repeat(3, 1fr); }
+  .stack { display: flex; flex-direction: column; gap: calc(var(--gap) * 0.3); }
+
+  /* A reading: whole number full size, tenth reduced, unit small and raised.
+     This is the treatment the Pi console now draws, carried over verbatim. */
+  .read { font-weight: 200; line-height: 0.95; white-space: nowrap; }
+  .read .whole { font-size: var(--size, calc(var(--u) * 2.4)); }
+  .read .tenth { font-size: calc(var(--size, calc(var(--u) * 2.4)) * 0.55); letter-spacing: -0.01em; }
+  .read .unit  {
+    font-size: calc(var(--size, calc(var(--u) * 2.4)) * 0.34);
+    vertical-align: super;
+    margin-left: 0.1em;
+    color: var(--ink-dim);
+  }
+
+  .big    { --size: clamp(46px, 5.0vw, 92px); }
+  .medium { --size: calc(var(--u) * 2.15); }
+  .small  { --size: calc(var(--u) * 1.5); }
+
+  /* Words, not numerals. The thin outsized treatment above is for figures;
+     a phrase like "No marked change" set at that size swamps the panel. */
+  .word {
+    font-weight: 300;
+    font-size: calc(var(--u) * 1.1);
+    line-height: 1.25;
+    color: var(--ink);
+    text-align: center;
+    text-wrap: balance;
+  }
+  .word.hero { font-size: calc(var(--u) * 2.2); font-weight: 200; }
+
+  .center  { text-align: center; }
+  .t-min   { color: var(--cold); }
+  .t-max   { color: var(--hot); }
+  .stamp   { font-size: calc(var(--u) * 0.78); color: var(--ink-dim); }
+  .trend-up   { color: var(--hot); }
+  .trend-down { color: var(--cool); }
+
+  .divider { height: 1px; background: var(--rule); margin: calc(var(--gap) * 0.2) 0; }
+
+  .feels { display: flex; align-items: center; gap: calc(var(--gap) * 1.1); }
+  .feels svg { flex: none; width: calc(var(--u) * 2.2); height: auto; }
+  .feels span { font-size: calc(var(--u) * 0.92); }
+
+  /* The dials are drawn from panel width, so without a cap they set the
+     height of their whole grid row and everything beside them stretches. */
+  .dial {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-width: min(100%, 360px);
+    margin: 0 auto;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 0.18em 0.7em;
+    border-radius: 3px;
+    background: var(--ink-dim);
+    color: #101010;
+    font-weight: 700;
+    font-size: calc(var(--u) * 0.86);
+    letter-spacing: 0.02em;
+  }
+
+  /* Horizontal meter: track, fill, optional marker labels underneath. */
+  .meter { height: calc(var(--u) * 0.42); border-radius: 99px; background: #202020; overflow: hidden; }
+  .meter > i { display: block; height: 100%; border-radius: 99px; background: var(--c, var(--green)); }
+  .scale { display: flex; justify-content: space-between; font-size: calc(var(--u) * 0.72); color: var(--ink-dim); }
+
+  /* ── Footer ───────────────────────────────────────────────── */
+  .footer { display: flex; align-items: center; gap: calc(var(--gap) * 0.8); flex-wrap: wrap; }
+  .btn {
+    appearance: none;
+    border: 1px solid var(--edge);
+    background: #131313;
+    color: var(--ink);
+    font: inherit;
+    font-size: calc(var(--u) * 0.95);
+    padding: 0.5em 1.5em;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 120ms, color 120ms, border-color 120ms;
+  }
+  .btn:hover { background: #1f1f1f; color: var(--ink-bright); }
+  .btn:focus-visible { outline: 2px solid var(--sky); outline-offset: 2px; }
+  .btn[aria-pressed="true"] {
+    background: var(--tint, #263238);
+    border-color: var(--tint, #263238);
+    color: #0a0a0a;
+    font-weight: 600;
+  }
+  .footer .spacer { flex: 1; }
+
+  .note {
+    margin: 0;
+    font-size: calc(var(--u) * 0.76);
+    color: var(--ink-dim);
+    text-align: center;
+  }
+
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 640px) {
+    .grid { grid-template-columns: 1fr; }
+    .footer .spacer { flex-basis: 100%; height: 0; }
+    .bar { justify-content: center; text-align: center; }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
