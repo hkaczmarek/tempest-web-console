@@ -28,6 +28,10 @@ img { max-width: 100%; }
     --teal:      #80cbc4;
     --slate:     #b0bec5;
 
+    /* Weight of the big numerals. Inter carries 200-700; 200 is very
+       spindly on a panel read from across a room, 400 is solid. */
+    --read-weight: 300;
+
     --gap: clamp(6px, 0.7vw, 11px);
     --pad: clamp(10px, 1.0vw, 16px);
     --u:   clamp(12px, 1.22vw, 21px);
@@ -141,7 +145,7 @@ img { max-width: 100%; }
 
   /* A reading: whole number full size, tenth reduced, unit small and raised.
      This is the treatment the Pi console now draws, carried over verbatim. */
-  .read { font-weight: 200; line-height: 0.95; white-space: nowrap; }
+  .read { font-weight: var(--read-weight, 300); line-height: 0.95; white-space: nowrap; }
   .read .whole { font-size: var(--size, calc(var(--u) * 2.4)); }
   .read .tenth { font-size: calc(var(--size, calc(var(--u) * 2.4)) * 0.55); letter-spacing: -0.01em; }
   /* `vertical-align: super` shifts by a fraction of the unit's OWN size,
@@ -168,7 +172,7 @@ img { max-width: 100%; }
     text-align: center;
     text-wrap: balance;
   }
-  .word.hero { font-size: calc(var(--u) * 2.2); font-weight: 200; }
+  .word.hero { font-size: calc(var(--u) * 2.2); font-weight: var(--read-weight, 300); }
 
   .center  { text-align: center; }
   .t-min   { color: var(--cold); }
