@@ -18,6 +18,8 @@ you fill in.
 - [Quick start](#quick-start)
 - [Source 1 — the Tempest API](#source-1--the-tempest-api)
 - [Source 2 — Home Assistant](#source-2--home-assistant)
+- [Deploying](#deploying)
+- [Updating](#updating)
 - [Security](#security)
 - [The panels](#the-panels)
 - [Values the console derives itself](#values-the-console-derives-itself)
@@ -155,24 +157,17 @@ use the Home Assistant source instead.
 
 ## Source 2 — Home Assistant
 
-### Where to put the files
+### Where you serve it changes baseUrl
 
-**Recommended — serve it from Home Assistant itself.** Copy the repo into
-`/config/www/tempest-web-console/`, and it is served at:
+See [Deploying](#deploying) for the hosting options themselves. What matters
+to *this* source is where the page is served from relative to Home Assistant.
 
-```
-http://homeassistant.local:8123/local/tempest-web-console/index.html
-```
+**Served from Home Assistant** (`/config/www/`): leave `baseUrl: ""`. Requests
+are same-origin — nothing to configure for CORS, and no mixed-content warnings
+over HTTPS.
 
-Leave `baseUrl: ""` in that case. Requests are then same-origin: nothing to
-configure for CORS, and no mixed-content warnings over HTTPS.
-
-If you have the **Studio Code Server** add-on, drag the unzipped folder into
-`config/www` in its file tree and edit `config.js` there. **Terminal & SSH** or
-the **File editor** add-on work too.
-
-**Anywhere else** — a NAS, a Pi, a folder on your desktop — set `baseUrl` to
-your Home Assistant URL:
+**Served from anywhere else** — a Pi, a NAS, a folder on your desktop — set
+`baseUrl` to your Home Assistant URL:
 
 ```js
 baseUrl: "http://192.168.1.50:8123",
@@ -233,6 +228,128 @@ from the core integration because it updates faster.
 > the needle sits pinned at "Stormy" permanently.
 
 ---
+
+## Deploying
+
+The repository is the single source of truth; every machine pulls from it.
+Nothing is built, so "deploying" is just copying files into a web root.
+
+### Home Assistant
+
+Put it in `/config/www/tempest-web-console/`, which Home Assistant serves at
+`/local/`:
+
+```
+http://homeassistant.local:8123/local/tempest-web-console/index.html
+```
+
+The **Studio Code Server** add-on cannot upload folders — browsers do not allow
+it — so use **Terminal & SSH** and the update command below, then edit
+`config.js` in Studio Code Server afterwards if you prefer a real editor.
+
+To give it a sidebar entry, make a dashboard with a single panel view holding
+an iframe card:
+
+```yaml
+views:
+  - title: Tempest Console
+    path: tempest-console
+    panel: true
+    cards:
+      - type: iframe
+        url: /local/tempest-web-console/index.html?v=3
+        aspect_ratio: "100%"
+        card_mod:
+          style: |
+            ha-card {
+              height: calc(100vh - var(--header-height, 56px) - 8px);
+              border: none;
+              background: #000;
+              overflow: hidden;
+            }
+            #root {
+              padding-top: 0 !important;
+              height: 100%;
+            }
+```
+
+The `card_mod` block is what makes it fill the screen. Without it the iframe
+card is sized by `aspect_ratio` and you get either a letterbox or a scrollbar.
+It needs the **card-mod** HACS component.
+
+### A Raspberry Pi, a NAS, or any static host
+
+Anything that serves files works. On Raspberry Pi OS:
+
+```sh
+sudo apt install -y nginx
+```
+
+Then deploy into `/var/www/html/` with the update command below and open
+`http://<hostname>/`. nginx enables its own systemd unit on install, so it
+comes back after a reboot with nothing further to do.
+
+Serving over plain HTTP is fine: browsers only block HTTPS pages loading HTTP
+resources, not the reverse, so an HTTP page can call WeatherFlow's HTTPS API.
+
+## Updating
+
+Same four lines everywhere, only the destination changes:
+
+```sh
+cd /tmp
+wget -O tc.tar.gz https://github.com/<you>/tempest-web-console/archive/refs/heads/main.tar.gz
+tar xzf tc.tar.gz
+cp -r tempest-web-console-main/. <destination>/
+rm -rf tempest-web-console-main tc.tar.gz
+```
+
+| Host | Destination | Notes |
+|---|---|---|
+| Home Assistant | `/config/www/tempest-web-console/` | no `sudo` in the HA terminal |
+| Raspberry Pi / nginx | `/var/www/html/` | `sudo` on the `cp` line |
+
+`cp -r source/. dest/` overwrites what is in the archive and leaves anything
+else alone — which matters if `config.js` is *not* committed, since your local
+one then survives.
+
+**Push to the repository first.** The archive comes from GitHub, so anything
+uncommitted cannot arrive. Running the update before pushing silently
+re-fetches the previous version.
+
+### Bump the cache version
+
+`index.html` references its assets with a query string:
+
+```html
+<link rel="stylesheet" href="assets/console.css?v=3">
+<script src="assets/console.js?v=3"></script>
+```
+
+**Increment that number whenever you change a file under `assets/`.** It is the
+only reliable way to get the new code into a browser, for two reasons that are
+easy to lose an afternoon to:
+
+- A hard reload (Ctrl+Shift+R) applies to the **top-level frame only**. Scripts
+  inside an iframe — which is how the Home Assistant dashboard shows this — are
+  reloaded normally, straight from cache.
+- Home Assistant registers a **service worker** that caches by URL. No refresh
+  dislodges it. A URL it has never seen is fetched; the same URL is not.
+
+Changing the query string defeats both, because the URL is different.
+
+### Checking what a machine actually has
+
+Grep for something only the new version contains:
+
+```sh
+grep -c BAND_COLOURS /config/www/tempest-web-console/assets/console.js
+grep -c '?v=' /config/www/tempest-web-console/index.html
+```
+
+`0` means that copy is stale. Do this before debugging anything else — most
+"it didn't work" turns out to be a copy that never arrived, or a browser
+holding an old one.
 
 ## Security
 
