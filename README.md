@@ -70,7 +70,7 @@ Set `source` in `config.js` to pick one.
 | Day's max gust, peak sun hours | with a device id | yes |
 | 24-hour difference, hourly trend | no | yes |
 | Barometer's daily low and high | no | yes |
-| Month and year rainfall | no | with `utility_meter` helpers |
+| Month and year rainfall | yes | with `utility_meter` helpers |
 | Sager forecast | pressure outlook instead | yes |
 
 **Start with `"tempest"`.** It is quicker to set up, safer to deploy, and works
@@ -282,7 +282,7 @@ is not similarly limited, and that is what matters.
 | **Barometer** | Sea-level pressure on a banded aneroid face, day's low and high, trend |
 | **Sager** | Outlook, expected change, wind direction and force, temperature trend. From the [`zambretti_sager`](https://github.com/ziffmafiya/zambretti_sager) integration on the HA source; a pressure-tendency outlook on the Tempest source, titled as such |
 | **Moon** | Phase name, illumination, drawn disc, next full moon. Computed from the date — no integration needed |
-| **Lightning** | Last strike distance and time, counts for the last hour, today and yesterday |
+| **Lightning** | Last strike distance, and strike counts. The HA source counts by day; the Tempest API reports the last hour and last three hours, and the panel relabels itself accordingly |
 
 ---
 
@@ -296,6 +296,22 @@ On the **Home Assistant** source that is a single `/api/history/period` call
 covering four entities — cheaper than four template sensors recomputing on
 every state change. On the **Tempest** source it is one call to the device
 observations endpoint, which needs `deviceId`.
+
+The Tempest source reads three endpoints rather than one, because they differ
+in ways that matter. `/observations/stn/` honours the unit parameters and
+returns full precision, but as a positional array described by its own
+`ob_fields` list. `/observations/station/` returns named fields but **ignores
+the unit parameters**, handing back Celsius and millibars whatever you ask for.
+And `better_forecast` honours units but rounds — 91.8 °F arrives as 92 — so it
+supplies only what the observation endpoint lacks: feels-like, dew point,
+yesterday's rainfall, lightning counts, and the forecast itself.
+
+Month and year rainfall come from a fourth endpoint, `/stats/station/{id}`,
+whose rows are positional arrays rather than named fields. Index 28 is the
+period total, and it is always millimetres — the endpoint accepts
+`units_precip` and ignores it — so the source converts. Rows are matched on
+their date prefix rather than taken by position, so the figures stay correct
+once a station has more than one month of history.
 
 | Figure | How | Tempest | HA |
 |---|---|---|---|
@@ -420,9 +436,10 @@ Assistant source is.
 - **Moonrise and moonset show a dash.** Phase and illumination are computed from
   the date, which needs nothing; rise and set need the observer's latitude and
   longitude and a proper ephemeris.
-- **Month and year rainfall** are not produced by the Tempest API or by either
-  HA integration. On the HA source, point `precipitationMonth` and
-  `precipitationYear` at `utility_meter` helpers if you keep them.
+- **Month and year rainfall on the HA source** are not produced by either
+  integration. Point `precipitationMonth` and `precipitationYear` at
+  `utility_meter` helpers if you keep them. The Tempest source reads both from
+  the station statistics endpoint and needs no helper.
 - **The Sager forecast needs a METAR feed**, which the Tempest API does not
   carry. On the Tempest source the panel shows a pressure-tendency outlook
   instead, titled "Pressure Outlook" so it does not claim to be Sager.

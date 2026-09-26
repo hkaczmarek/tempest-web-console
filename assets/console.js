@@ -327,9 +327,14 @@ function render() {
   $("l-dist").textContent   = l.dist === null ? "—" : l.dist;
   $("l-dist-u").textContent = l.dist === null ? "" : "mi";
   $("l-when").textContent = l.when;
-  $("l-hour").textContent = l.hour;
-  $("l-today").textContent = l.today;
-  $("l-yest").textContent  = l.yesterday;
+  // Sources count strikes over different windows; each names its own.
+  const dash = (v) => (v === null || v === undefined) ? "–" : v;
+  $("l-hour").textContent  = dash(l.hour);
+  $("l-today").textContent = dash(l.today);
+  $("l-yest").textContent  = dash(l.yesterday);
+  $("l-hour-label").textContent  = l.hourLabel  || "Last Hour";
+  $("l-today-label").textContent = l.todayLabel || "Today";
+  $("l-yest-label").textContent  = l.yestLabel  || "Yesterday";
 }
 
 // Hand the console a fresh set of values and repaint.

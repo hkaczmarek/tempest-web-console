@@ -199,6 +199,15 @@ const Sources = (() => {
       }));
   }
 
+  function zipObs(resp) {
+    const fields = resp && resp.ob_fields;
+    const row = resp && resp.obs && resp.obs[0];
+    if (!Array.isArray(fields) || !Array.isArray(row)) return {};
+    const out = {};
+    fields.forEach((name, i) => { out[name] = row[i]; });
+    return out;
+  }
+
   async function tempest(cfg) {
     const t = cfg.tempest || {};
     if (!t.stationId || !t.token) {
@@ -207,15 +216,26 @@ const Sources = (() => {
     const tok = encodeURIComponent(t.token);
     const now = new Date();
 
-    const [fc, obsResp] = await Promise.all([
+    const [fc, obsResp, stats] = await Promise.all([
       tget("/better_forecast?station_id=" + t.stationId + "&token=" + tok + "&" + UNITS),
       tget("/observations/stn/" + t.stationId + "?token=" + tok + "&" + UNITS)
-        .catch(() => null)
+        .catch(() => null),
+      tget("/stats/station/" + t.stationId + "?token=" + tok).catch(() => null)
     ]);
 
     const cc  = (fc && fc.current_conditions) || {};
     const day = (fc && fc.forecast && fc.forecast.daily && fc.forecast.daily[0]) || {};
-    const obs = (obsResp && obsResp.obs && obsResp.obs[0]) || {};
+    /* Two observation endpoints exist and they are NOT interchangeable.
+       /observations/station/ returns named fields but ignores the unit
+       parameters, handing back Celsius and millibars whatever you ask for.
+       /observations/stn/ honours them, but returns a positional array plus
+       an ob_fields list naming the columns - so zip the two rather than
+       indexing, which also survives WeatherFlow reordering them.
+
+       This endpoint is the primary because better_forecast rounds:
+       91.8 degrees arrives as 92, 6.52 UV as 6. Rounded figures would make
+       the console's tenth digit permanently zero. */
+    const obs = zipObs(obsResp);
 
     // Prefer a value the station reports; fall back to the other call.
     const pick = (...vals) => {
@@ -266,13 +286,14 @@ const Sources = (() => {
     }
 
     // ── Wind ─────────────────────────────────────────────────────────
-    const bearing = pick(cc.wind_direction, obs.wind_direction, 0);
+    const bearing = pick(obs.wind_dir, cc.wind_direction, 0);
     const card = compass(bearing);
     const windNow  = pick(obs.wind_avg, cc.wind_avg, 0);
     const windGust = pick(obs.wind_gust, cc.wind_gust, 0);
+    const airTemp  = pick(obs.air_temp, cc.air_temperature);
 
     // ── Pressure ─────────────────────────────────────────────────────
-    const slp = pick(cc.sea_level_pressure, obs.sea_level_pressure);
+    const slp = pick(obs.sea_level_pressure, cc.sea_level_pressure);
     const trendWord = String(pick(cc.pressure_trend, "steady")).toLowerCase();
     const TRENDS = {
       falling: ["Falling", "Conditions may worsen", "Rain becoming more likely"],
@@ -282,9 +303,48 @@ const Sources = (() => {
     const [pTrend, verdict, outlookText] = TRENDS[trendWord] || TRENDS.steady;
 
     const radiation = pick(obs.solar_radiation, cc.solar_radiation, 0);
-    const uv = pick(cc.uv, obs.uv, 0);
-    const rate = pick(obs.precip_accum_last_1hr, 0);
-    const lastEpoch = pick(obs.lightning_strike_last_epoch, null);
+    const uv = pick(obs.uv, cc.uv, 0);
+
+    /* precip_accumulation is what fell during one report interval, so an
+       hourly rate is that scaled up by however many intervals fit in an
+       hour. report_interval is in minutes and is normally 1. */
+    const interval = pick(obs.report_interval, 1) || 1;
+    const rate = obs.precip_accumulation == null
+      ? 0 : obs.precip_accumulation * 60 / interval;
+
+    /* Month and year rainfall come from the stats endpoint, whose rows are
+       positional arrays rather than named fields:
+
+         ["2026-09-01", 955.8, 957.5, ... , 0.586993, 0.586993, 5, 5, 1, 0]
+                                              ^ index 28, the period total
+
+       That total is always millimetres. The endpoint accepts units_precip
+       and ignores it - asking for "in" and "mm" returns identical numbers -
+       so it is converted here rather than requested in inches. 0.586993 mm
+       is 0.02 in, which is what the station's own console shows.
+
+       Rows are matched by their date prefix rather than taken by position,
+       so the figures stay right once the station has more than one month
+       of history. */
+    const PRECIP_TOTAL = 28;
+    const statTotal = (rows, prefix) => {
+      if (!Array.isArray(rows) || !rows.length) return null;
+      const row = rows.find((r) => Array.isArray(r) &&
+                                   typeof r[0] === "string" &&
+                                   r[0].startsWith(prefix))
+                  || rows[rows.length - 1];
+      const mm = row && row[PRECIP_TOTAL];
+      return Number.isFinite(mm) ? Math.round(mm / 25.4 * 100) / 100 : null;
+    };
+    const thisMonth = now.getFullYear() + "-" +
+                      String(now.getMonth() + 1).padStart(2, "0");
+    const thisYear  = String(now.getFullYear());
+    /* strike_distance reads 0 when nothing has been detected, which would
+       render as a confident "0 mi". Only trust it alongside a strike. */
+    const strikes1h = pick(cc.lightning_strike_count_last_1hr, 0);
+    const strikes3h = pick(cc.lightning_strike_count_last_3hr, 0);
+    const strikeDist = (strikes1h || strikes3h) && obs.strike_distance
+      ? obs.strike_distance : null;
 
     const title = (s) => String(s || "")
       .replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
@@ -293,7 +353,7 @@ const Sources = (() => {
       forecast: {
         wind: Math.round(pick(cc.wind_avg, 0)) + " mph " + card.short,
         text: cc.conditions || title(day.conditions) || "—",
-        temp: pick(cc.air_temperature, null),
+        temp: airTemp,
         low:  day.air_temp_low  === undefined ? null : Math.round(day.air_temp_low),
         high: day.air_temp_high === undefined ? null : Math.round(day.air_temp_high),
         pop:  Math.round(pick(day.precip_probability, 0)),
@@ -301,14 +361,14 @@ const Sources = (() => {
         issued: clock(now)
       },
       outdoor: {
-        temp: pick(cc.air_temperature, null),
+        temp: airTemp,
         diff: null,                                   // needs yesterday's obs
         trend: null,                                  // needs an hour of history
         min: tMin, minAt: tMinAt, max: tMax, maxAt: tMaxAt,
         minLabel, maxLabel,
         feels: pick(cc.feels_like, null),
         feelsText: feelsText(pick(cc.feels_like, null)),
-        humidity: Math.round(pick(cc.relative_humidity, 0)),
+        humidity: Math.round(pick(obs.rh, cc.relative_humidity, 0)),
         dew: pick(cc.dew_point, null)
       },
       wind: {
@@ -319,7 +379,9 @@ const Sources = (() => {
         scale: Math.max(15, Math.ceil((gustMax || windGust) / 5) * 5),
         bearing: Math.round(bearing),
         cardinal: card.short,
-        cardinalLong: cc.wind_direction_cardinal || card.long,
+        // wind_direction_cardinal is the abbreviation ("SW"); the dial
+        // wants the spelled-out form the PiConsole shows.
+        cardinalLong: card.long,
         beaufort: beaufort(windNow)
       },
       solar: {
@@ -336,10 +398,11 @@ const Sources = (() => {
         band: solarBand(radiation)
       },
       rain: {
-        today:     pick(obs.precip_accum_local_day, 0),
-        yesterday: pick(obs.precip_accum_local_yesterday, 0),
-        month: null,                                  // not exposed by the API
-        year:  null,
+        today:     pick(obs.local_day_precip_accumulation,
+                        cc.precip_accum_local_day, 0),
+        yesterday: pick(cc.precip_accum_local_yesterday, 0),
+        month: statTotal(stats && stats.stats_month, thisMonth),
+        year:  statTotal(stats && stats.stats_year,  thisYear),
         rate,
         state: rate > 0 ? "Currently Raining" : "Currently Dry"
       },
@@ -368,15 +431,20 @@ const Sources = (() => {
         at: cc.time ? clock(new Date(cc.time * 1000)) : clock(now)
       },
       moon: moon(now),
+      /* The Tempest API reports strikes over the last hour and the last
+         three hours, not per calendar day, so the panel says so rather
+         than relabelling three-hour counts as "today". */
       lightning: {
-        dist: obs.lightning_strike_last_distance == null
-                ? null : Math.round(obs.lightning_strike_last_distance),
-        when: lastEpoch
-          ? "Last strike " + clock(new Date(lastEpoch * 1000))
+        dist: strikeDist === null ? null : Math.round(strikeDist),
+        when: strikes1h || strikes3h
+          ? "Detected in the last three hours"
           : "No strikes detected",
-        hour:  pick(obs.lightning_strike_count_last_1hr, 0),
-        today: pick(obs.lightning_strike_count, 0),
-        yesterday: pick(obs.lightning_strike_count_last_3hr, 0)
+        hour:  strikes1h,
+        today: strikes3h,
+        yesterday: null,
+        hourLabel:  "Last Hour",
+        todayLabel: "Last 3 Hours",
+        yestLabel:  "Yesterday"
       }
     };
   }
