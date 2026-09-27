@@ -183,6 +183,8 @@ function drawBarometer() {
 
 // ── Moon: the lit fraction drawn as two arcs ──────────────────────────
 function drawMoon() {
+  // The pane can be opened before the first reading arrives.
+  if (!DATA || !DATA.moon) return;
   const g = $("m-dial");
   g.innerHTML = "";
   const cx = 150, cy = 72, r = 56;
@@ -405,10 +407,34 @@ function render() {
   $("l-yest-label").textContent  = l.yestLabel  || "Yesterday";
 }
 
+// ── Panel switcher — the three buttons the Pi console has ────────────────
+// Sager, Moon and Lightning each swap into the Forecast slot. Pressing the
+// lit button again goes back to Forecast, which is what the Pi does.
+const PANES = ["forecast", "sager", "moon", "lightning"];
+
+function showPane(name) {
+  PANES.forEach((p) => { $("pane-" + p).hidden = (p !== name); });
+  PANES.slice(1).forEach((p) => {
+    $("btn-" + p).setAttribute("aria-pressed", String(p === name));
+  });
+  if (name === "moon") drawMoon();
+}
+
+PANES.slice(1).forEach((p) => {
+  const btn = $("btn-" + p);
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    showPane($("pane-" + p).hidden ? p : "forecast");
+  });
+});
+
 // Hand the console a fresh set of values and repaint.
 function update(data) {
-DATA = data;
-render();
+  DATA = data;
+  render();
+  // The moon is drawn on demand rather than every refresh, so redraw it
+  // here if it is the pane currently on screen.
+  if (!$("pane-moon").hidden) drawMoon();
 }
 
 window.TempestConsole = { update, tick };

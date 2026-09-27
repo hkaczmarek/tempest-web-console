@@ -259,7 +259,7 @@ views:
     panel: true
     cards:
       - type: iframe
-        url: /local/tempest-web-console/index.html?v=6
+        url: /local/tempest-web-console/index.html?v=7
         aspect_ratio: "100%"
         card_mod:
           style: |
@@ -326,8 +326,8 @@ re-fetches the previous version.
 `index.html` references its assets with a query string:
 
 ```html
-<link rel="stylesheet" href="assets/console.css?v=6">
-<script src="assets/console.js?v=6"></script>
+<link rel="stylesheet" href="assets/console.css?v=7">
+<script src="assets/console.js?v=7"></script>
 ```
 
 **Increment that number whenever you change a file under `assets/`,** in all
