@@ -423,6 +423,30 @@ And `better_forecast` honours units but rounds — 91.8 °F arrives as 92 — so
 supplies only what the observation endpoint lacks: feels-like, dew point,
 yesterday's rainfall, lightning counts, and the forecast itself.
 
+Pressure is requested in **millibars and converted**, not asked for in inHg.
+The API rounds inHg to one decimal place — it returns `29.9` where the station
+reads `29.93` — which is meaningless on a dial calibrated in hundredths.
+Millibars carry the precision.
+
+**Sea level pressure is computed, not read.** The API's `sea_level_pressure`
+disagrees with both the Tempest app and the PiConsole by roughly 0.02 inHg,
+because those two reduce station pressure using the station's elevation *plus
+the sensor's height above ground*. The console uses the same barometric
+formula the PiConsole does, with elevation and height read from `/stations`,
+so all three agree. Each sample of the day is reduced individually rather than
+having a single offset applied to all of them.
+
+Day observations are requested with **`bucket=a`**. Without it the endpoint
+silently truncates a long range to its most recent slice — correct at 6 PM,
+quietly missing the morning by 9 PM, with no error and nothing in the response
+to indicate it. `bucket=a` returns an aggregated series covering the whole span,
+with the same column layout. This is what the PiConsole itself does.
+
+The day is then cached for ten minutes and live readings are folded into the
+extremes, so a new high, low or gust appears the moment it happens without
+re-reading the day every thirty seconds — the same establish-then-accumulate
+model the PiConsole uses.
+
 Month and year rainfall come from a fourth endpoint, `/stats/station/{id}`,
 whose rows are positional arrays rather than named fields. Index 28 is the
 period total, and it is always millimetres — the endpoint accepts

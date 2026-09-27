@@ -235,7 +235,11 @@ const Sources = (() => {
   // great deal safer to deploy than a Home Assistant token.
 
   const TEMPEST = "https://swd.weatherflow.com/swd/rest";
-  const UNITS = "units_temp=f&units_wind=mph&units_pressure=inhg" +
+  /* Pressure is requested in MILLIBARS, not inHg, and converted here.
+     Asking for inHg gets one decimal place back - 29.9, where the station
+     actually reads 29.93 - which is useless on a dial calibrated in
+     hundredths. The millibar form carries the precision (1013.3). */
+  const UNITS = "units_temp=f&units_wind=mph&units_pressure=mb" +
                 "&units_precip=in&units_distance=mi";
 
   async function tget(path) {
@@ -255,6 +259,46 @@ const Sources = (() => {
      units the request asks for, so they are converted here. */
   const MS_TO_MPH = 2.236936;
   const MB_TO_INHG = 0.0295299831;
+  const inHg = (mb) => (mb === null || mb === undefined) ? null : mb * MB_TO_INHG;
+
+  /* Sea level pressure, computed rather than read.
+
+     The API's own sea_level_pressure field disagrees with both the Tempest
+     app and the PiConsole by about 0.02 inHg, because they reduce station
+     pressure using the station's elevation PLUS the height of the device
+     above ground, and the API's figure does not. Working the formula
+     backwards from the app's own numbers - 28.207 inHg station, 29.938 sea
+     level - gives about 499.5 m, against 497.65 m registered elevation: the
+     difference is the sensor height. Both are read from /stations rather
+     than assumed.
+
+     This is the barometric formula the PiConsole uses
+     (lib/derived_variables.py, SLP()), so all three now agree. */
+  function seaLevelMb(stationMb, elevationM) {
+    if (stationMb === null || stationMb === undefined) return null;
+    const P0 = 1013.25, Rd = 287.05, gamma = 0.0065, g = 9.80665, T0 = 288.15;
+    const a = (Rd * gamma) / g;
+    return stationMb *
+      Math.pow(1 + Math.pow(P0 / stationMb, a) * ((gamma * elevationM) / T0), 1 / a);
+  }
+
+  /* Station elevation and sensor height, read once and kept. */
+  let stationMeta = { id: null, elevation: null };
+  async function tempestElevation(stationId, token) {
+    if (stationMeta.id === stationId) return stationMeta.elevation;
+    try {
+      const r = await tget("/stations?token=" + encodeURIComponent(token));
+      const st = (r.stations || []).find((x) => x.station_id === Number(stationId));
+      const base = st && st.station_meta && st.station_meta.elevation;
+      const dev = st && (st.devices || []).find((d) => d.device_type === "ST");
+      const agl = dev && dev.device_meta && dev.device_meta.agl;
+      if (Number.isFinite(base)) {
+        stationMeta = { id: stationId,
+                        elevation: base + (Number.isFinite(agl) ? agl : 0) };
+      }
+    } catch (e) { /* fall back to the API's own sea_level_pressure */ }
+    return stationMeta.elevation;
+  }
 
   /* NOT day_offset. That parameter is widely cited but the endpoint ignores
      it and returns only its default recent window - measured at 111 rows
@@ -263,7 +307,8 @@ const Sources = (() => {
      time_start and time_end are the documented way to ask for a range. */
   async function tempestDeviceRange(deviceId, token, startSec, endSec) {
     const rows = await tget("/observations/device/" + deviceId +
-                            "?time_start=" + Math.floor(startSec) +
+                            "?bucket=a" +
+                            "&time_start=" + Math.floor(startSec) +
                             "&time_end=" + Math.floor(endSec) +
                             "&token=" + encodeURIComponent(token));
     const obs = (rows && rows.obs) || [];
@@ -274,7 +319,7 @@ const Sources = (() => {
         tempF: r[7] === null ? null : r[7] * 9 / 5 + 32,
         windMph: r[2] === null ? null : r[2] * MS_TO_MPH,
         gustMph: r[3] === null ? null : r[3] * MS_TO_MPH,
-        pressInHg: r[6] === null ? null : r[6] * MB_TO_INHG,
+        pressMb: r[6],
         solar: r[11]
       }));
   }
@@ -288,6 +333,19 @@ const Sources = (() => {
     return out;
   }
 
+  /* Asking for raw observations over a long range gets silently truncated to
+     the most recent slice - fine at 6 PM, quietly missing the morning by 9 PM,
+     with no error and nothing in the response to say so. bucket=a asks for an
+     aggregated series instead and returns the whole span. This is what the
+     PiConsole itself does (lib/request_api/weatherflow_api.py, today()), and
+     the column layout is unchanged.
+
+     The caching below is the rest of that design: establish the day once,
+     then keep it current from live readings, rather than re-deriving it from
+     scratch on every refresh. */
+  const DAY_CACHE_MS = 10 * 60 * 1000;
+  let dayCache = { at: 0, day: 0, rows: [] };
+
   async function tempest(cfg) {
     const t = cfg.tempest || {};
     if (!t.stationId || !t.token) {
@@ -296,6 +354,8 @@ const Sources = (() => {
     const tok = encodeURIComponent(t.token);
     const now = new Date();
     const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
+
+    const elevM = await tempestElevation(t.stationId, t.token);
 
     const [fc, obsResp, stats] = await Promise.all([
       tget("/better_forecast?station_id=" + t.stationId + "&token=" + tok + "&" + UNITS),
@@ -336,14 +396,25 @@ const Sources = (() => {
       try {
         const nowSec = now.getTime() / 1000;
         const midnightSec = midnight.getTime() / 1000;
-        const [today, yesterday] = await Promise.all([
-          tempestDeviceRange(t.deviceId, t.token, midnightSec, nowSec),
-          // A narrow window either side of this time yesterday is all the
-          // 24-hour difference needs; no reason to pull a second whole day.
-          tempestDeviceRange(t.deviceId, t.token,
-                             nowSec - 86400 - 3600, nowSec - 86400 + 3600)
-            .catch(() => [])
-        ]);
+
+        // Re-read the day occasionally rather than on every refresh; live
+        // readings are merged into the extremes below in between.
+        const stale = dayCache.day !== midnight.getTime() ||
+                      Date.now() - dayCache.at > DAY_CACHE_MS;
+        if (stale) {
+          dayCache = {
+            at: Date.now(),
+            day: midnight.getTime(),
+            rows: await tempestDeviceRange(t.deviceId, t.token, midnightSec, nowSec)
+          };
+        }
+        const today = dayCache.rows;
+
+        // A narrow window either side of this time yesterday is all the
+        // 24-hour difference needs; no reason to pull a second whole day.
+        const yesterday = await tempestDeviceRange(
+          t.deviceId, t.token, nowSec - 86400 - 3600, nowSec - 86400 + 3600
+        ).catch(() => []);
         const rows = today;
 
         const temps = rows.filter((r) => r.tempF !== null);
@@ -373,29 +444,27 @@ const Sources = (() => {
           windDayAvg = winds.reduce((a2, b2) => a2 + b2, 0) / winds.length;
         }
 
-        /* Device observations carry STATION pressure; the dial is sea level.
-           The difference between the two is fixed by the station's elevation,
-           so take today's offset from the pair the observation endpoint
-           reports and apply it to the day's extremes. Roughly 1.7 inHg at
-           1,600 feet, and it moves too little across a day to matter here. */
-        const slpNow = pick(obs.sea_level_pressure, cc.sea_level_pressure);
-        const stnNow = pick(obs.station_pressure, cc.station_pressure);
-        const press = rows.filter((r) => r.pressInHg !== null);
-        if (press.length && slpNow !== null && stnNow !== null) {
-          const offset = slpNow - stnNow;
+        /* Device observations carry STATION pressure. Each sample is reduced
+           to sea level in its own right, rather than applying one offset
+           taken from the current reading. */
+        const press = rows.filter((r) => r.pressMb !== null).map((r) => ({
+          t: r.t,
+          v: elevM !== null ? inHg(seaLevelMb(r.pressMb, elevM)) : inHg(r.pressMb)
+        }));
+        if (press.length) {
           let lo = press[0], hi = press[0];
           for (const r of press) {
-            if (r.pressInHg < lo.pressInHg) lo = r;
-            if (r.pressInHg > hi.pressInHg) hi = r;
+            if (r.v < lo.v) lo = r;
+            if (r.v > hi.v) hi = r;
           }
-          pLowIn = lo.pressInHg + offset;  pLowAt = clock(lo.t);
-          pHighIn = hi.pressInHg + offset; pHighAt = clock(hi.t);
+          pLowIn = lo.v;  pLowAt = clock(lo.t);
+          pHighIn = hi.v; pHighAt = clock(hi.t);
 
-          // Rate of change over three hours. The offset cancels out, so it
-          // is the same whether measured at station level or sea level.
-          const then = at(press.map((r) => ({ t: r.t, v: r.pressInHg })),
-                          new Date(now.getTime() - 3 * 3600000), 45);
-          if (then !== null) pRate3h = (stnNow - then) / 3;
+          const nowMb = pick(obs.station_pressure, cc.station_pressure);
+          const nowIn = elevM !== null && nowMb !== null
+            ? inHg(seaLevelMb(nowMb, elevM)) : inHg(nowMb);
+          const then = at(press, new Date(now.getTime() - 3 * 3600000), 45);
+          if (then !== null && nowIn !== null) pRate3h = (nowIn - then) / 3;
         }
 
         const solar = rows.filter((r) => Number.isFinite(r.solar));
@@ -430,8 +499,22 @@ const Sources = (() => {
     const humidity = pick(obs.rh, cc.relative_humidity);
     const apparent = apparentF(airTemp, humidity, windNow);
 
+    /* Fold the live reading into the day's extremes. The cached day is
+       re-read every ten minutes; this keeps a new high or low visible the
+       moment it happens, the way an accumulating console would. */
+    if (minLabel === "Today's Low" && airTemp !== null) {
+      if (tMin === null || airTemp < tMin) { tMin = airTemp; tMinAt = clock(now); }
+      if (tMax === null || airTemp > tMax) { tMax = airTemp; tMaxAt = clock(now); }
+    }
+    if (windGust !== null && (gustMax === null || windGust > gustMax)) {
+      gustMax = windGust;
+    }
+
     // ── Pressure ─────────────────────────────────────────────────────
-    const slp = pick(obs.sea_level_pressure, cc.sea_level_pressure);
+    const stationMb = pick(obs.station_pressure, cc.station_pressure);
+    const slp = elevM !== null && stationMb !== null
+      ? inHg(seaLevelMb(stationMb, elevM))
+      : inHg(pick(obs.sea_level_pressure, cc.sea_level_pressure));
     const trendWord = String(pick(cc.pressure_trend, "steady")).toLowerCase();
     const TRENDS = {
       falling: ["Falling", "Conditions may worsen", "Rain becoming more likely"],
@@ -565,7 +648,10 @@ const Sources = (() => {
       },
       barometer: {
         slp,
-        low: pLowIn, lowAt: pLowAt, high: pHighIn, highAt: pHighAt,
+        low:   (slp !== null && pLowIn  !== null && slp < pLowIn)  ? slp : pLowIn,
+        lowAt: (slp !== null && pLowIn  !== null && slp < pLowIn)  ? clock(now) : pLowAt,
+        high:  (slp !== null && pHighIn !== null && slp > pHighIn) ? slp : pHighIn,
+        highAt:(slp !== null && pHighIn !== null && slp > pHighIn) ? clock(now) : pHighAt,
         trend: pTrend, rate: pRate3h, verdict
       },
       /* Sager needs a METAR feed the Tempest API does not carry. What the
