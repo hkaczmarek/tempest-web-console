@@ -206,35 +206,62 @@ function drawMoon() {
 }
 
 // ── Forecast icon ─────────────────────────────────────────────────────
-function drawForecastIcon() {
-  $("f-icon").innerHTML = `
-    <svg viewBox="0 0 64 52" style="width:min(100%,6.4em);height:auto" role="img" aria-label="Partly cloudy">
-      <g stroke="#f0a050" stroke-width="3" stroke-linecap="round">
-        <line x1="40" y1="3"  x2="40" y2="9"/>
-        <line x1="55" y1="9"  x2="51" y2="13"/>
-        <line x1="61" y1="23" x2="55" y2="23"/>
-        <line x1="25" y1="9"  x2="29" y2="13"/>
-      </g>
-      <circle cx="40" cy="23" r="9" fill="#f0a050"/>
-      <path d="M17 46h26a9 9 0 0 0 .6-18 13 13 0 0 0-24.6 4A8 8 0 0 0 17 46Z"
-            fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
-    </svg>`;
-}
+/* The forecast icon was a single hardcoded partly-cloudy drawing, so it
+   showed a sun at midnight. It now follows the condition token the source
+   supplies, with day and night variants where the distinction matters. */
+const SUN = '<g stroke="#f0a050" stroke-width="3" stroke-linecap="round">' +
+  '<line x1="40" y1="2" x2="40" y2="9"/><line x1="56" y1="8" x2="51" y2="13"/>' +
+  '<line x1="62" y1="23" x2="55" y2="23"/><line x1="24" y1="8" x2="29" y2="13"/>' +
+  '<line x1="56" y1="38" x2="51" y2="33"/></g>' +
+  '<circle cx="40" cy="23" r="9" fill="#f0a050"/>';
 
-// ── Panel switcher — the three buttons the Pi console has ─────────────
-const PANES = ["forecast", "sager", "moon", "lightning"];
-function showPane(name) {
-  PANES.forEach((p) => { $("pane-" + p).hidden = (p !== name); });
-  PANES.slice(1).forEach((p) => {
-    $("btn-" + p).setAttribute("aria-pressed", String(p === name));
-  });
-  if (name === "moon") drawMoon();
+// A crescent: the disc, with a second disc lifted out of its upper right.
+const MOON = '<path d="M45 13a11 11 0 1 0 0 20 13 13 0 0 1 0-20Z" ' +
+             'fill="#cfd8dc" stroke="#cfd8dc" stroke-width="2" ' +
+             'stroke-linejoin="round"/>';
+
+const CLOUD = '<path d="M17 46h26a9 9 0 0 0 .6-18 13 13 0 0 0-24.6 4A8 8 0 0 0 17 46Z" ' +
+              'fill="#ffffff" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>';
+
+const DROPS = '<g stroke="#4fc3d7" stroke-width="3" stroke-linecap="round">' +
+  '<line x1="22" y1="48" x2="19" y2="52"/><line x1="31" y1="48" x2="28" y2="52"/>' +
+  '<line x1="40" y1="48" x2="37" y2="52"/></g>';
+
+const BOLT = '<path d="M33 44 24 52h6l-2 7 9-9h-6l2-6Z" fill="#ffca28"/>';
+
+const FLAKES = '<g stroke="#b3e5fc" stroke-width="2.4" stroke-linecap="round">' +
+  '<line x1="22" y1="49" x2="22" y2="53"/><line x1="20" y1="51" x2="24" y2="51"/>' +
+  '<line x1="32" y1="49" x2="32" y2="53"/><line x1="30" y1="51" x2="34" y2="51"/>' +
+  '<line x1="42" y1="49" x2="42" y2="53"/><line x1="40" y1="51" x2="44" y2="51"/></g>';
+
+const FOG = '<g stroke="#b0bec5" stroke-width="3" stroke-linecap="round">' +
+  '<line x1="14" y1="42" x2="48" y2="42"/><line x1="18" y1="49" x2="52" y2="49"/></g>';
+
+const WIND = '<g stroke="#9ccc65" stroke-width="3" stroke-linecap="round" fill="none">' +
+  '<path d="M12 20h24a6 6 0 1 0-6-6"/><path d="M12 32h32a6 6 0 1 1-6 6"/>' +
+  '<path d="M12 44h16"/></g>';
+
+const ICONS = {
+  clear:  (night) => night ? MOON : SUN,
+  partly: (night) => (night ? MOON : SUN) + CLOUD,
+  // Two clouds, the back one offset - superimposing the same path just
+  // draws one cloud.
+  cloudy: () => '<g opacity="0.5" transform="translate(14,-9) scale(0.78)">' +
+                CLOUD + '</g>' + CLOUD,
+  rain:   () => CLOUD + DROPS,
+  storm:  () => CLOUD + BOLT,
+  snow:   () => CLOUD + FLAKES,
+  fog:    () => CLOUD + FOG,
+  wind:   () => WIND
+};
+
+function drawForecastIcon(token, night) {
+  const build = ICONS[token] || ICONS.partly;
+  $("f-icon").innerHTML =
+    '<svg viewBox="0 0 64 60" style="width:min(100%,6.4em);height:auto" ' +
+    'role="img" aria-label="' + (token || "forecast") +
+    (night ? " at night" : "") + '">' + build(night) + '</svg>';
 }
-PANES.slice(1).forEach((p) => {
-  $("btn-" + p).addEventListener("click", () => {
-    showPane($("pane-" + p).hidden ? p : "forecast");
-  });
-});
 
 // ── Clock ─────────────────────────────────────────────────────────────
 function tick() {
@@ -262,7 +289,7 @@ function render() {
   // inch total from another - so it is not given one here.
   $("f-daily").textContent = f.daily;
   $("f-issued").textContent = f.issued;
-  drawForecastIcon();
+  drawForecastIcon(f.icon, f.night);
 
   reading($("t-outdoor"), o.temp, F);
   band($("t-outdoor"), o.temp, TEMP_BANDS);

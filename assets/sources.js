@@ -120,6 +120,23 @@ const Sources = (() => {
     return tempF;
   }
 
+  /* Every source names conditions differently - WeatherFlow says
+     "partly-cloudy-night", Home Assistant says "partlycloudy" - so both map
+     onto one small vocabulary the renderer understands:
+     clear partly cloudy rain storm snow fog wind */
+  function iconToken(name) {
+    const n = String(name || "").toLowerCase();
+    if (/thunder|lightning/.test(n))       return "storm";
+    if (/snow|sleet|hail|flurr/.test(n))   return "snow";
+    if (/rain|pour|drizzl|shower/.test(n)) return "rain";
+    if (/fog|mist|haz/.test(n))            return "fog";
+    if (/wind/.test(n))                    return "wind";
+    if (/partly|mostly|few|scattered/.test(n)) return "partly";
+    if (/cloud|overcast/.test(n))          return "cloudy";
+    if (/clear|sunny|fair/.test(n))        return "clear";
+    return "partly";
+  }
+
   function feelsText(f) {
     if (f === null) return "";
     if (f < 32) return "Feeling freezing";
@@ -171,7 +188,8 @@ const Sources = (() => {
   async function demo() {
     return {
       forecast:  { wind: "11 mph S", text: "Partly cloudy until 3 PM today",
-                   temp: 90, low: 61, high: 91, pop: 0, daily: "0%", issued: "1 PM" },
+                   temp: 90, low: 61, high: 91, pop: 0, daily: "0%",
+                   icon: "partly", night: false, issued: "1 PM" },
       outdoor:   { temp: 89.9, diff: -2.8, trend: 3.6,
                    min: 60.7, minAt: "7:02 AM", max: 91.4, maxAt: "11:32 AM",
                    feels: 89.9, feelsText: "Feeling hot", humidity: 32, dew: 56.4 },
@@ -238,9 +256,15 @@ const Sources = (() => {
   const MS_TO_MPH = 2.236936;
   const MB_TO_INHG = 0.0295299831;
 
-  async function tempestDeviceDay(deviceId, token, dayOffset = 0) {
+  /* NOT day_offset. That parameter is widely cited but the endpoint ignores
+     it and returns only its default recent window - measured at 111 rows
+     covering the last two hours, against 1131 rows for a full day. Every
+     figure derived from it was therefore computed over the wrong span.
+     time_start and time_end are the documented way to ask for a range. */
+  async function tempestDeviceRange(deviceId, token, startSec, endSec) {
     const rows = await tget("/observations/device/" + deviceId +
-                            "?day_offset=" + dayOffset +
+                            "?time_start=" + Math.floor(startSec) +
+                            "&time_end=" + Math.floor(endSec) +
                             "&token=" + encodeURIComponent(token));
     const obs = (rows && rows.obs) || [];
     return obs
@@ -271,6 +295,7 @@ const Sources = (() => {
     }
     const tok = encodeURIComponent(t.token);
     const now = new Date();
+    const midnight = new Date(now); midnight.setHours(0, 0, 0, 0);
 
     const [fc, obsResp, stats] = await Promise.all([
       tget("/better_forecast?station_id=" + t.stationId + "&token=" + tok + "&" + UNITS),
@@ -309,9 +334,15 @@ const Sources = (() => {
 
     if (t.deviceId) {
       try {
+        const nowSec = now.getTime() / 1000;
+        const midnightSec = midnight.getTime() / 1000;
         const [today, yesterday] = await Promise.all([
-          tempestDeviceDay(t.deviceId, t.token, 0),
-          tempestDeviceDay(t.deviceId, t.token, 1).catch(() => [])
+          tempestDeviceRange(t.deviceId, t.token, midnightSec, nowSec),
+          // A narrow window either side of this time yesterday is all the
+          // 24-hour difference needs; no reason to pull a second whole day.
+          tempestDeviceRange(t.deviceId, t.token,
+                             nowSec - 86400 - 3600, nowSec - 86400 + 3600)
+            .catch(() => [])
         ]);
         const rows = today;
 
@@ -456,16 +487,33 @@ const Sources = (() => {
     const title = (s) => String(s || "")
       .replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 
+    /* The Forecast panel must show a FORECAST. Reading current_conditions
+       here made it a second copy of the Temperature panel, stamped with the
+       current time instead of the hour being forecast. */
+    const hourly = (fc && fc.forecast && fc.forecast.hourly) || [];
+    const nowSecs = Math.floor(now.getTime() / 1000);
+    const next = hourly.find((h) => h && h.time >= nowSecs) || hourly[0] || null;
+    const fIcon = iconToken((next && next.icon) || cc.icon || day.icon);
+    const fNight = /night/.test(String((next && next.icon) || cc.icon || ""));
+
     return {
       forecast: {
-        wind: Math.round(pick(cc.wind_avg, 0)) + " mph " + card.short,
-        text: cc.conditions || title(day.conditions) || "—",
-        temp: airTemp,
+        wind: next && next.wind_avg !== undefined
+          ? Math.round(next.wind_avg) + " mph " +
+            (next.wind_direction_cardinal ||
+             compass(pick(next.wind_direction, bearing)).short)
+          : Math.round(pick(cc.wind_avg, 0)) + " mph " + card.short,
+        text: (next && next.conditions) || cc.conditions ||
+              title(day.conditions) || "—",
+        temp: next && next.air_temperature !== undefined
+          ? next.air_temperature : airTemp,
         low:  day.air_temp_low  === undefined ? null : Math.round(day.air_temp_low),
         high: day.air_temp_high === undefined ? null : Math.round(day.air_temp_high),
         pop:  Math.round(pick(day.precip_probability, 0)),
         daily: Math.round(pick(day.precip_probability, 0)) + "%",
-        issued: clock(now)
+        icon: fIcon,
+        night: fNight,
+        issued: next ? clock(new Date(next.time * 1000)) : clock(now)
       },
       outdoor: {
         temp: airTemp,
@@ -774,6 +822,8 @@ const Sources = (() => {
                 ? Math.round(daily.precipitation_probability) : 0,
         daily: daily && daily.precipitation != null
                 ? daily.precipitation + " in" : "0%",
+        icon: iconToken(daily ? daily.condition : str(E.weather, "")),
+        night: str(E.sun) === "below_horizon",
         issued: clock(now)
       },
       outdoor: {
