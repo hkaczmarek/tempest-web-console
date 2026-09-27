@@ -23,11 +23,13 @@ you fill in.
 - [Security](#security)
 - [The panels](#the-panels)
 - [Values the console derives itself](#values-the-console-derives-itself)
+- [Tempest API notes](#tempest-api-notes)
 - [Running it on a wall tablet](#running-it-on-a-wall-tablet)
 - [Customising](#customising)
 - [Adding your own source](#adding-your-own-source)
 - [Known gaps](#known-gaps)
 - [Credits](#credits)
+- [Licence](#licence)
 
 ---
 
@@ -257,7 +259,7 @@ views:
     panel: true
     cards:
       - type: iframe
-        url: /local/tempest-web-console/index.html?v=3
+        url: /local/tempest-web-console/index.html?v=6
         aspect_ratio: "100%"
         card_mod:
           style: |
@@ -292,6 +294,8 @@ comes back after a reboot with nothing further to do.
 Serving over plain HTTP is fine: browsers only block HTTPS pages loading HTTP
 resources, not the reverse, so an HTTP page can call WeatherFlow's HTTPS API.
 
+---
+
 ## Updating
 
 Same four lines everywhere, only the destination changes:
@@ -322,13 +326,13 @@ re-fetches the previous version.
 `index.html` references its assets with a query string:
 
 ```html
-<link rel="stylesheet" href="assets/console.css?v=3">
-<script src="assets/console.js?v=3"></script>
+<link rel="stylesheet" href="assets/console.css?v=6">
+<script src="assets/console.js?v=6"></script>
 ```
 
-**Increment that number whenever you change a file under `assets/`.** It is the
-only reliable way to get the new code into a browser, for two reasons that are
-easy to lose an afternoon to:
+**Increment that number whenever you change a file under `assets/`,** in all
+five places `index.html` uses it. It is the only reliable way to get the new
+code into a browser, for two reasons that are easy to lose an afternoon to:
 
 - A hard reload (Ctrl+Shift+R) applies to the **top-level frame only**. Scripts
   inside an iframe — which is how the Home Assistant dashboard shows this — are
@@ -337,6 +341,13 @@ easy to lose an afternoon to:
   dislodges it. A URL it has never seen is fetched; the same URL is not.
 
 Changing the query string defeats both, because the URL is different.
+
+> **Bump it last.** The dashboard's iframe URL carries its own `?v=`, and the
+> order of those two steps matters. Raise the dashboard's version *before* the
+> new files are in place and the service worker fetches the **old** page under
+> the **new** URL and caches it there — burning that version number and leaving
+> you no way to reach the new code except bumping again. Deploy the files
+> first, then raise the version, then reload.
 
 ### Checking what a machine actually has
 
@@ -350,6 +361,8 @@ grep -c '?v=' /config/www/tempest-web-console/index.html
 `0` means that copy is stale. Do this before debugging anything else — most
 "it didn't work" turns out to be a copy that never arrived, or a browser
 holding an old one.
+
+---
 
 ## Security
 
@@ -412,47 +425,14 @@ the console fetches one day of history and computes them.
 On the **Home Assistant** source that is a single `/api/history/period` call
 covering four entities — cheaper than four template sensors recomputing on
 every state change. On the **Tempest** source it is one call to the device
-observations endpoint, which needs `deviceId`.
+observations endpoint, which needs `deviceId`. That call has several traps in
+it; they are collected in [Tempest API notes](#tempest-api-notes).
 
-The Tempest source reads three endpoints rather than one, because they differ
-in ways that matter. `/observations/stn/` honours the unit parameters and
-returns full precision, but as a positional array described by its own
-`ob_fields` list. `/observations/station/` returns named fields but **ignores
-the unit parameters**, handing back Celsius and millibars whatever you ask for.
-And `better_forecast` honours units but rounds — 91.8 °F arrives as 92 — so it
-supplies only what the observation endpoint lacks: feels-like, dew point,
-yesterday's rainfall, lightning counts, and the forecast itself.
-
-Pressure is requested in **millibars and converted**, not asked for in inHg.
-The API rounds inHg to one decimal place — it returns `29.9` where the station
-reads `29.93` — which is meaningless on a dial calibrated in hundredths.
-Millibars carry the precision.
-
-**Sea level pressure is computed, not read.** The API's `sea_level_pressure`
-disagrees with both the Tempest app and the PiConsole by roughly 0.02 inHg,
-because those two reduce station pressure using the station's elevation *plus
-the sensor's height above ground*. The console uses the same barometric
-formula the PiConsole does, with elevation and height read from `/stations`,
-so all three agree. Each sample of the day is reduced individually rather than
-having a single offset applied to all of them.
-
-Day observations are requested with **`bucket=a`**. Without it the endpoint
-silently truncates a long range to its most recent slice — correct at 6 PM,
-quietly missing the morning by 9 PM, with no error and nothing in the response
-to indicate it. `bucket=a` returns an aggregated series covering the whole span,
-with the same column layout. This is what the PiConsole itself does.
-
-The day is then cached for ten minutes and live readings are folded into the
-extremes, so a new high, low or gust appears the moment it happens without
-re-reading the day every thirty seconds — the same establish-then-accumulate
-model the PiConsole uses.
-
-Month and year rainfall come from a fourth endpoint, `/stats/station/{id}`,
-whose rows are positional arrays rather than named fields. Index 28 is the
-period total, and it is always millimetres — the endpoint accepts
-`units_precip` and ignores it — so the source converts. Rows are matched on
-their date prefix rather than taken by position, so the figures stay correct
-once a station has more than one month of history.
+**Establish, then accumulate.** The day is fetched once, cached for ten
+minutes, and live readings are folded into the extremes as they arrive — so a
+new high, low or gust appears the moment it happens without re-reading the
+whole day every thirty seconds. It is the model the PiConsole uses, and the
+reason the console agrees with the Pi at 9 PM as well as at noon.
 
 | Figure | How | Tempest | HA |
 |---|---|---|---|
@@ -472,14 +452,110 @@ once a station has more than one month of history.
 Dew point and feels-like are computed rather than read because `better_forecast`
 rounds them to whole degrees, which would peg the console's tenth digit at zero.
 
-Device observations report **station** pressure, while the dial shows sea level.
-The gap between the two is fixed by the station's elevation — about 1.7 inHg at
-1,600 feet — so the source takes today's offset from the pair the observation
-endpoint reports and applies it to the day's extremes.
+**Feels-like is clamped.** The NWS heat index is a regression fitted to humid
+conditions, and in dry heat it returns a number *below* the air temperature —
+92.5 °F at 27% humidity comes out as 90.2. The console takes
+`max(temperature, heat index)` above 80 °F and `min(temperature, wind chill)`
+below 50 °F, so the figure never contradicts the thermometer beside it. Against
+the published NWS tables the unclamped values are within a degree
+(90 °F / 70% → 105.9 vs 105; 100 °F / 40% → 109.3 vs 109; 35 °F at 20 mph →
+23.9 vs 24).
 
 On the HA source, the recorder must be keeping those entities. If you have
 `exclude`d them, the affected figures show a dash and everything else carries
 on.
+
+---
+
+## Tempest API notes
+
+Everything here was found the hard way. **Each of these fails silently** — the
+response looks well-formed, the numbers look plausible, and nothing in the
+payload tells you they are wrong. They are recorded here because none of them
+is in the API documentation.
+
+### `day_offset` is ignored
+
+`/observations/device/{id}?day_offset=0` does not return the day. It returns
+the endpoint's default recent window — measured here at 111 rows covering two
+hours, against 1,131 rows for the same day requested by timestamp. Use
+`time_start` and `time_end`.
+
+### A long raw range is truncated
+
+Asking for a full day with `time_start`/`time_end` and no bucket returns only
+the most recent slice of it. This is the cruelest one: it is *correct at 6 PM*,
+because the window still covers the day's high, and quietly wrong by 9 PM once
+the morning has fallen off the end. No error, no flag, no short-read
+indication.
+
+**Use `bucket=a`.** It asks for an aggregated series, returns the whole span,
+and keeps the same column layout. This is what the PiConsole does
+(`lib/request_api/weatherflow_api.py`), which is where the answer finally came
+from.
+
+### `units_pressure=inhg` loses precision
+
+It returns one decimal place — `29.9` where the station reads `29.938`. On a
+dial calibrated in hundredths that is useless. Request **millibars and
+convert**; millibars carry the precision.
+
+### `sea_level_pressure` disagrees with the app
+
+The API's own field differs from both the Tempest app and the PiConsole by
+roughly 0.02 inHg, because those two reduce station pressure using the
+station's elevation **plus the sensor's height above ground** (`station_meta.
+elevation` + the device's `device_meta.agl`, both from `/stations`).
+
+The console computes it with the same barometric formula the PiConsole uses:
+
+```
+SLP = P × (1 + (P₀/P)^(Rd·γ/g) × (γ·h)/T₀)^(g/(Rd·γ))
+```
+
+with P₀ = 1013.25 mb, Rd = 287.05, γ = 0.0065, g = 9.80665, T₀ = 288.15, and
+h = elevation + sensor height. Every sample of the day is reduced individually,
+rather than taking one offset and applying it to all of them. With this in
+place the console, the Pi and tempestwx.com agree to the hundredth.
+
+### Two observation endpoints, different contracts
+
+| | `/observations/station/{id}` | `/observations/stn/{id}` |
+|---|---|---|
+| Field names | named object | **positional array** + an `ob_fields` list |
+| Unit parameters | **ignored** — always metric | honoured |
+
+Reading the positional one as if it were the named one yields `undefined` for
+every field, which then falls through to zero. That produced a console
+confidently reporting zero rainfall and zero lightning strikes. Zip the row
+against `ob_fields` before touching it.
+
+### `/stats/station/{id}` rows are positional too
+
+No field names at all. **Index 28** is the period precipitation total, and it
+is always **millimetres** — the endpoint accepts `units_precip` and ignores it.
+Match rows on their date prefix rather than taking them by position, or the
+figures drift once the station has more than one month of history.
+
+### `better_forecast.current_conditions` rounds to integers
+
+92 for 92.5, UV 6 for 6.52. Fine for a forecast, not for a console with a
+tenths digit. Use it only for what the observation endpoints do not carry:
+yesterday's rainfall, lightning counts, and the forecast itself — and compute
+dew point and feels-like locally.
+
+### obs_st column indices
+
+For the aggregated device rows the console reads:
+
+| Index | Field |
+|---|---|
+| 0 | epoch |
+| 2 | wind average |
+| 3 | wind gust |
+| 6 | station pressure |
+| 7 | air temperature |
+| 11 | solar radiation |
 
 ---
 
@@ -520,16 +596,39 @@ Every colour is a custom property at the top of `assets/console.css`:
 
 The panel accents map to those in the `.p-*` rules just below.
 
+### Value colours
+
+Temperature, feels-like and dew point are tinted by how high they are, the way
+the PiConsole tints its dials. The bands are at the top of `assets/console.js`:
+
+```js
+const BAND_COLOURS = true;
+const TEMP_BANDS = { stops: [45, 60, 78, 90],
+                     hues:  ["#00a4b4", "#4fc3d7", "#c8c8c8", "#f0a050", "#f05e40"] };
+const DEW_BANDS  = { stops: [55, 65, 70],
+                     hues:  ["#81c784", "#c8c8c8", "#f0a050", "#f05e40"] };
+```
+
+`stops` are the thresholds in °F and `hues` is always one longer — the colour
+below the first stop, then one per band above it. Set `BAND_COLOURS = false`
+for plain white numerals throughout.
+
 ### Size
 
 One variable drives the whole type scale:
 
 ```css
---u: clamp(12px, 1.22vw, 21px);
+--u: clamp(11px, min(1.22vw, 1.8vh), 21px);
 ```
 
-Raise the middle term for a bigger console on a given screen, or the last for a
-higher ceiling on a large display.
+The `min()` is what keeps the console inside a fixed-height frame: type sized
+from viewport **width** alone overflows a short, wide window such as a Home
+Assistant iframe. Raise the middle terms for a bigger console on a given
+screen, or the last for a higher ceiling on a large display. `--gap` and
+`--pad` just above follow the same pattern and should keep it.
+
+Numerals are set at `--read-weight: 300`, matching the PiConsole's light
+digits. Raise it to 400 if your display makes them look thin.
 
 ### The decimal treatment
 
@@ -547,9 +646,20 @@ renders as `90.0`, never as `89` with a stray `.10` beside it.
 
 ### The dials
 
-`.dial` caps the SVG at 360px wide. They are drawn from panel width, so without
-that cap they set the height of their whole grid row and every panel beside them
-stretches to match. Raise it for bigger dials and more whitespace elsewhere.
+```css
+.dial { max-width: min(100%, 360px, 32vh); }
+```
+
+Dials are drawn from panel width, so without a cap they set the height of their
+whole grid row and every panel beside them stretches to match. The `32vh` term
+matters more than the pixel one: in a short frame the dial, not the type, is
+what overflows. Raise them together for bigger dials and less whitespace
+elsewhere.
+
+One trap if you edit the SVGs: do **not** add `preserveAspectRatio="none"` to
+one with a fixed height. It scales x and y by different factors, which turns
+circles into ovals and thins strokes unevenly. Let the `viewBox` set the
+height instead.
 
 ---
 
@@ -617,6 +727,8 @@ Assistant source is.
 - [zambretti_sager](https://github.com/ziffmafiya/zambretti_sager) — the Sager
   and Zambretti forecasts.
 - [Inter](https://rsms.me/inter/) by Rasmus Andersson.
+
+---
 
 ## Licence
 
