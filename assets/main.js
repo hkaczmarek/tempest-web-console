@@ -14,12 +14,12 @@
   const every = Math.max(10, cfg.refreshSeconds || 30) * 1000;
   const note = document.getElementById("note");
 
-  // Header identity.
+  // Station identity. There is no header bar to put this in - it never
+  // changes, and on a wall panel the vertical space is worth more - so it
+  // goes in the document title, where the browser tab and any kiosk window
+  // title will carry it.
   if (cfg.station || cfg.location) {
-    document.querySelector(".station").innerHTML =
-      (cfg.station ? "<b>" + cfg.station + "</b>" : "") +
-      (cfg.station && cfg.location ? " &nbsp;·&nbsp; " : "") +
-      (cfg.location || "");
+    document.title = [cfg.station, cfg.location].filter(Boolean).join(" \u00B7 ");
   }
 
   const SOURCES = {
@@ -40,8 +40,7 @@
         { hour: "numeric", minute: "2-digit", hour12: true });
       note.textContent = mode === "demo"
         ? "Demo values. Copy config.example.js to config.js to read a live station."
-        : "Updated " + stamp + " \u00b7 " +
-          (mode === "tempest" ? "WeatherFlow Tempest API" : "Home Assistant");
+        : "Updated " + stamp;
       note.style.color = "";
     } catch (err) {
       console.error(err);

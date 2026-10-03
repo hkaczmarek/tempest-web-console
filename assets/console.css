@@ -39,7 +39,7 @@ img { max-width: 100%; }
        keeps the whole console inside the frame without scrolling. */
     --gap: clamp(5px, min(0.7vw, 1.1vh), 11px);
     --pad: clamp(8px,  min(1.0vw, 1.6vh), 16px);
-    --u:   clamp(11px, min(1.40vw, 2.10vh), 23px);
+    --u:   clamp(11px, min(1.57vw, 2.35vh), 24px);
   }
 
   html, body { height: 100%; }
@@ -63,28 +63,19 @@ img { max-width: 100%; }
     gap: var(--gap);
   }
 
-  /* ── Header ───────────────────────────────────────────────── */
-  .bar {
+  /* ── Footer clock ─────────────────────────────────────────────
+     The header bar is gone; the clock sits at the right of the button
+     row, which was mostly empty anyway. */
+  .bar { display: none; }
+  .footer .when {
     display: flex;
     align-items: baseline;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: calc(var(--gap) * 0.6) var(--gap);
-    padding: calc(var(--gap) * 0.3) calc(var(--pad) * 0.4) calc(var(--gap) * 0.9);
-    border-bottom: 1px solid var(--rule);
+    gap: 0.7em;
+    white-space: nowrap;
   }
-  .bar .station {
-    font-size: calc(var(--u) * 0.86);
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--ink-dim);
-  }
-  .bar .station b { color: var(--ink-bright); font-weight: 600; }
-  .bar .when { display: flex; align-items: baseline; gap: 0.7em; }
-  .bar .date { font-size: calc(var(--u) * 1.0); color: var(--ink); }
-  .bar .time {
-    font-size: calc(var(--u) * 1.55);
+  .footer .date { font-size: calc(var(--u) * 1.0); color: var(--ink); }
+  .footer .time {
+    font-size: calc(var(--u) * 1.7);
     font-weight: 300;
     color: var(--ink-bright);
     letter-spacing: 0.01em;
@@ -315,6 +306,7 @@ img { max-width: 100%; }
     font-size: calc(var(--u) * 0.76);
     color: var(--ink-dim);
     text-align: right;
+    max-width: 48ch;
   }
 
   @media (max-width: 1000px) { .grid { grid-template-columns: 1fr 1fr; } }
