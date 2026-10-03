@@ -625,7 +625,7 @@ for plain white numerals throughout.
 One variable drives the whole type scale:
 
 ```css
---u: clamp(11px, min(1.22vw, 1.8vh), 21px);
+--u: clamp(11px, min(1.40vw, 2.10vh), 23px);
 ```
 
 The `min()` is what keeps the console inside a fixed-height frame: type sized

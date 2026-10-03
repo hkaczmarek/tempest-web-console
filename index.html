@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap">
 <!-- Bump ?v= on all five when you change any asset, or browsers and the
      Home Assistant iframe will keep serving the previous copy. -->
-<link rel="stylesheet" href="assets/console.css?v=10">
+<link rel="stylesheet" href="assets/console.css?v=11">
 </head>
 <body>
 
@@ -351,23 +351,27 @@
 
   </div>
 
+  <!-- The status note shares the button row rather than taking a row of
+       its own: on a 1280x800 panel that row cost about 2.5vh to say
+       "Updated 4:04 PM". The row wraps, so a long error message still
+       gets the space it needs. -->
   <div class="footer">
     <button class="btn" type="button" id="btn-sager"     data-pane="sager"     aria-pressed="false" style="--tint:#80cbc4">Sager</button>
     <button class="btn" type="button" id="btn-moon"      data-pane="moon"      aria-pressed="false" style="--tint:#b0bec5">Moon</button>
     <button class="btn" type="button" id="btn-lightning" data-pane="lightning" aria-pressed="false" style="--tint:#ff8a65">Lightning</button>
+    <span class="spacer"></span>
+    <p class="note" id="note">
+      Demo values, captured 26 Sep 2026 12:40 PM. Clock is live.
+    </p>
   </div>
-
-  <p class="note" id="note">
-    Demo values, captured 26 Sep 2026 12:40 PM. Clock is live.
-  </p>
 </div>
 
 <!-- Your own settings. Copy config.example.js to config.js and edit it.
      config.js is gitignored: it holds a token. Without it the console
      renders the built-in demo values. -->
-<script src="config.js?v=10" onerror="window.CONSOLE_CONFIG=window.CONSOLE_CONFIG||null"></script>
-<script src="assets/console.js?v=10"></script>
-<script src="assets/sources.js?v=10"></script>
-<script src="assets/main.js?v=10"></script>
+<script src="config.js?v=11" onerror="window.CONSOLE_CONFIG=window.CONSOLE_CONFIG||null"></script>
+<script src="assets/console.js?v=11"></script>
+<script src="assets/sources.js?v=11"></script>
+<script src="assets/main.js?v=11"></script>
 </body>
 </html>

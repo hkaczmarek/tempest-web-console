@@ -39,7 +39,7 @@ img { max-width: 100%; }
        keeps the whole console inside the frame without scrolling. */
     --gap: clamp(5px, min(0.7vw, 1.1vh), 11px);
     --pad: clamp(8px,  min(1.0vw, 1.6vh), 16px);
-    --u:   clamp(11px, min(1.22vw, 1.8vh), 21px);
+    --u:   clamp(11px, min(1.40vw, 2.10vh), 23px);
   }
 
   html, body { height: 100%; }
@@ -160,7 +160,7 @@ img { max-width: 100%; }
      which at 34% is barely a nudge beside a 90px figure. An explicit rise
      lifts the degree symbol and the F up to the digits, as on the Pi. */
   .read .unit  {
-    font-size: calc(var(--size, calc(var(--u) * 2.4)) * 0.34);
+    font-size: calc(var(--size, calc(var(--u) * 2.4)) * 0.40);
     vertical-align: var(--unit-rise, 1.25em);
     margin-left: 0.1em;
     color: var(--ink-dim);
@@ -185,7 +185,7 @@ img { max-width: 100%; }
   .center  { text-align: center; }
   .t-min   { color: var(--cold); }
   .t-max   { color: var(--hot); }
-  .stamp   { font-size: calc(var(--u) * 0.78); color: var(--ink-dim); }
+  .stamp   { font-size: calc(var(--u) * 0.84); color: var(--ink-dim); }
 
   /* ── Forecast panel ──────────────────────────────────────────────────
      Five hours across the top, three days beneath. Both are built from
@@ -197,7 +197,7 @@ img { max-width: 100%; }
     gap: 2px;
     text-align: center;
   }
-  .fh-h { font-size: calc(var(--u) * 0.72); color: var(--ink-dim); }
+  .fh-h { font-size: calc(var(--u) * 0.80); color: var(--ink-dim); }
   .fh-i { margin: calc(var(--gap) * 0.25) 0; }
   .fh-i svg { width: calc(var(--u) * 1.5); height: auto; display: block; margin: 0 auto; }
   .fh-t {
@@ -206,7 +206,7 @@ img { max-width: 100%; }
     line-height: 1.05;
     font-variant-numeric: tabular-nums;
   }
-  .fh-w { font-size: calc(var(--u) * 0.62); color: var(--ink-dim); }
+  .fh-w { font-size: calc(var(--u) * 0.72); color: var(--ink-dim); }
 
   /* The panel spreads its children with space-between, which suits the
      panels that share a row with a dial. Here it opened two large gaps
@@ -235,7 +235,7 @@ img { max-width: 100%; }
      keep the block inside the panel on a 1280x800 screen. */
   .fd-n { font-size: calc(var(--u) * 0.88); font-weight: 500; }
   .fd-c {
-    font-size: calc(var(--u) * 0.66);
+    font-size: calc(var(--u) * 0.74);
     color: var(--ink-dim);
     white-space: nowrap;
     overflow: hidden;
@@ -314,7 +314,7 @@ img { max-width: 100%; }
     margin: 0;
     font-size: calc(var(--u) * 0.76);
     color: var(--ink-dim);
-    text-align: center;
+    text-align: right;
   }
 
   @media (max-width: 1000px) { .grid { grid-template-columns: 1fr 1fr; } }
