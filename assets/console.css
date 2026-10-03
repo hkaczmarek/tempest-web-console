@@ -208,7 +208,19 @@ img { max-width: 100%; }
   }
   .fh-w { font-size: calc(var(--u) * 0.62); color: var(--ink-dim); }
 
-  .fc-days { display: flex; flex-direction: column; }
+  /* The panel spreads its children with space-between, which suits the
+     panels that share a row with a dial. Here it opened two large gaps
+     instead, so the two blocks take the slack themselves and distribute
+     it between their own rows. */
+  .p-forecast > .fc-hours,
+  .p-forecast > .fc-days { flex: 1 1 auto; }
+  .fc-hours { align-content: space-evenly; }
+
+  .fc-days {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-evenly;
+  }
   .fc-day {
     display: grid;
     /* The name column takes the slack, so a long condition has room to
@@ -216,9 +228,11 @@ img { max-width: 100%; }
     grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
     gap: calc(var(--gap) * 0.7);
-    padding: calc(var(--gap) * 0.4) 0;
+    padding: calc(var(--gap) * 0.28) 0;
   }
   .fc-day + .fc-day { border-top: 1px solid var(--rule); }
+  /* Five rows rather than three, so the vertical padding comes down to
+     keep the block inside the panel on a 1280x800 screen. */
   .fd-n { font-size: calc(var(--u) * 0.88); font-weight: 500; }
   .fd-c {
     font-size: calc(var(--u) * 0.66);

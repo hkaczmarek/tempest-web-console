@@ -164,7 +164,9 @@ const Sources = (() => {
     const days = Math.round((midnightOf(d) - midnightOf(now)) / 86400000);
     if (days === 0) return "Today";
     if (days === 1) return "Tomorrow";
-    return d.toLocaleDateString("en-US", { weekday: "short", day: "numeric" });
+    /* Built by hand: Intl renders {weekday, day} as "5 Mon" in en-US, which
+       reads as a time before it reads as a date. */
+    return d.toLocaleDateString("en-US", { weekday: "short" }) + " " + d.getDate();
   };
 
   /* Conditions text is the one field with no length bound, and it shares a
@@ -633,12 +635,12 @@ const Sources = (() => {
         wind:  h.wind_avg === undefined ? null : Math.round(h.wind_avg)
       }));
 
-    /* The next three days, skipping today - today's high and low are
+    /* The next five days, skipping today - today's high and low are
        already on the Temperature panel, and repeating them here would
-       spend a third of the rows saying nothing new. */
+       spend a row saying nothing new. */
     const dailyAll = (fc && fc.forecast && fc.forecast.daily) || [];
     const fDays = dailyAll
-      .slice(1, 4)
+      .slice(1, 6)
       .map((d) => ({
         label: dayLabel(new Date((d.day_start_local || 0) * 1000), now),
         cond:  shortCond(d.conditions),
@@ -912,7 +914,7 @@ const Sources = (() => {
       });
 
     const fDays = dailyList
-      .slice(1, 4)
+      .slice(1, 6)
       .map((d) => ({
         label: dayLabel(new Date(d.datetime), now),
         cond:  shortCond(d.condition),
