@@ -407,11 +407,6 @@ is not similarly limited, and that is what matters.
 
 ## The panels
 
-There is no header bar. The station name and location go in the document
-title instead — they never change, and on a 1280 × 800 panel that row cost
-about 7% of the height. The clock sits at the right of the button row,
-alongside the status note.
-
 | Panel | Shows |
 |---|---|
 | **Forecast** | The next five hours as a strip (hour, condition, temperature, wind), then the next five days (name, condition, chance of rain when there is one, low and high). Today is deliberately omitted from the day rows - its high and low are already on the Temperature panel |
@@ -630,7 +625,7 @@ for plain white numerals throughout.
 One variable drives the whole type scale:
 
 ```css
---u: clamp(11px, min(1.57vw, 2.35vh), 24px);
+--u: clamp(11px, min(1.40vw, 2.10vh), 23px);
 ```
 
 The `min()` is what keeps the console inside a fixed-height frame: type sized

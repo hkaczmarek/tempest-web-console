@@ -11,15 +11,20 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap">
 <!-- Bump ?v= on all five when you change any asset, or browsers and the
      Home Assistant iframe will keep serving the previous copy. -->
-<link rel="stylesheet" href="assets/console.css?v=12">
+<link rel="stylesheet" href="assets/console.css?v=11">
 </head>
 <body>
 
 <div class="console">
 
-  <!-- No header bar. The station name and location never change, so they
-       live in the document title instead of spending ~7vh of a 1280x800
-       panel; the clock moved to the footer row. -->
+  <header class="bar">
+    <div class="station">Tempest <b>ST-00222100</b> &nbsp;·&nbsp; Canyon Country, CA</div>
+    <div class="when">
+      <span class="date" id="c-date">Sat, 26 Sep 2026</span>
+      <span class="time" id="c-time">12:40:22 PM</span>
+    </div>
+  </header>
+
   <div class="grid">
 
     <!-- ── Slot 1: Forecast / Sager / Moon / Lightning ───────── -->
@@ -358,19 +363,15 @@
     <p class="note" id="note">
       Demo values, captured 26 Sep 2026 12:40 PM. Clock is live.
     </p>
-    <div class="when">
-      <span class="date" id="c-date">Sat, 26 Sep 2026</span>
-      <span class="time" id="c-time">12:40:22 PM</span>
-    </div>
   </div>
 </div>
 
 <!-- Your own settings. Copy config.example.js to config.js and edit it.
      config.js is gitignored: it holds a token. Without it the console
      renders the built-in demo values. -->
-<script src="config.js?v=12" onerror="window.CONSOLE_CONFIG=window.CONSOLE_CONFIG||null"></script>
-<script src="assets/console.js?v=12"></script>
-<script src="assets/sources.js?v=12"></script>
-<script src="assets/main.js?v=12"></script>
+<script src="config.js?v=11" onerror="window.CONSOLE_CONFIG=window.CONSOLE_CONFIG||null"></script>
+<script src="assets/console.js?v=11"></script>
+<script src="assets/sources.js?v=11"></script>
+<script src="assets/main.js?v=11"></script>
 </body>
 </html>
