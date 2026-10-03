@@ -404,7 +404,7 @@ is not similarly limited, and that is what matters.
 
 | Panel | Shows |
 |---|---|
-| **Forecast** | Condition, forecast wind, today's high and low, chance of rain |
+| **Forecast** | The next five hours as a strip (hour, condition, temperature, wind), then the next three days (name, condition, chance of rain when there is one, low and high). Today is deliberately omitted from the day rows - its high and low are already on the Temperature panel |
 | **Temperature** | Outdoor, 24 hr difference, hourly trend, today's min and max with timestamps, feels-like, humidity, dew point |
 | **Wind Speed** | Compass with the 30° sector the wind is from, current, gust, average, day's max gust, Beaufort |
 | **Solar / UV** | Irradiance, UV index with band, sunrise/sunset arc, daylight remaining, peak sun hours |
@@ -440,6 +440,8 @@ reason the console agrees with the Pi at 9 PM as well as at noon.
 | Today's max gust | Maximum of the gust series | with device id | yes |
 | The day's average wind | Mean of the wind series | with device id | — |
 | Peak sun hours | Trapezoidal integration of irradiance, in kWh/m² | with device id | yes |
+| Hourly forecast strip | `forecast.hourly`, from now | yes | needs an integration that serves hourly |
+| Three-day outlook | `forecast.daily`, skipping today | yes | yes |
 | 24 hour difference | Now minus the nearest sample 24 hours back | with device id | yes |
 | Hourly trend | Now minus the nearest sample an hour back | with device id | yes |
 | Barometer's daily low and high | Extremes since midnight, corrected to sea level | with device id | yes |

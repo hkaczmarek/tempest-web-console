@@ -186,6 +186,56 @@ img { max-width: 100%; }
   .t-min   { color: var(--cold); }
   .t-max   { color: var(--hot); }
   .stamp   { font-size: calc(var(--u) * 0.78); color: var(--ink-dim); }
+
+  /* ── Forecast panel ──────────────────────────────────────────────────
+     Five hours across the top, three days beneath. Both are built from
+     arrays, so the panel holds its shape whether a source gives five
+     hours or two. */
+  .fc-hours {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 2px;
+    text-align: center;
+  }
+  .fh-h { font-size: calc(var(--u) * 0.72); color: var(--ink-dim); }
+  .fh-i { margin: calc(var(--gap) * 0.25) 0; }
+  .fh-i svg { width: calc(var(--u) * 1.5); height: auto; display: block; margin: 0 auto; }
+  .fh-t {
+    font-size: calc(var(--u) * 1.15);
+    font-weight: var(--read-weight, 300);
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+  }
+  .fh-w { font-size: calc(var(--u) * 0.62); color: var(--ink-dim); }
+
+  .fc-days { display: flex; flex-direction: column; }
+  .fc-day {
+    display: grid;
+    /* The name column takes the slack, so a long condition has room to
+       breathe instead of being clipped to "Thunde...". */
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: calc(var(--gap) * 0.7);
+    padding: calc(var(--gap) * 0.4) 0;
+  }
+  .fc-day + .fc-day { border-top: 1px solid var(--rule); }
+  .fd-n { font-size: calc(var(--u) * 0.88); font-weight: 500; }
+  .fd-c {
+    font-size: calc(var(--u) * 0.66);
+    color: var(--ink-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .fd-i svg { width: calc(var(--u) * 1.35); height: auto; display: block; }
+  .fd-hl {
+    font-size: calc(var(--u) * 0.92);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .fd-lo { color: var(--cool); }
+  .fd-hi { color: var(--warm); }
+  .fd-pop { color: var(--cool); font-size: calc(var(--u) * 0.66); }
   .trend-up   { color: var(--hot); }
   .trend-down { color: var(--cool); }
 

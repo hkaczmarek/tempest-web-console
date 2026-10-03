@@ -151,6 +151,34 @@ const Sources = (() => {
   const clock = (d) => d.toLocaleTimeString("en-US",
     { hour: "numeric", minute: "2-digit", hour12: true });
 
+  /* "4 PM" - the hourly strip has five columns to fit, so the minutes
+     (always :00) are dead weight. */
+  const hourLabel = (d) => d.toLocaleTimeString("en-US",
+    { hour: "numeric", hour12: true });
+
+  /* "Sun 4". Today and tomorrow are named rather than dated, because that
+     is how you read them. */
+  const dayLabel = (d, now) => {
+    const midnightOf = (x) =>
+      new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const days = Math.round((midnightOf(d) - midnightOf(now)) / 86400000);
+    if (days === 0) return "Today";
+    if (days === 1) return "Tomorrow";
+    return d.toLocaleDateString("en-US", { weekday: "short", day: "numeric" });
+  };
+
+  /* Conditions text is the one field with no length bound, and it shares a
+     row with the icon and the temperatures. The icon already says what the
+     weather is, so the text only has to disambiguate. */
+  const shortCond = (t) => String(t || "")
+    .replace(/_/g, " ")
+    .replace(/\bPossible\b/i, "")
+    .replace(/\bThunderstorms?\b/i, "Storms")
+    .replace(/\bPrecipitation\b/i, "Rain")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^./, (c) => c.toUpperCase());
+
   /* Moon phase from the date alone, so the console needs no moon
      integration. Conway's approximation of the synodic month, good to
      well under a day - plenty for a phase name and a drawn disc. */
@@ -189,7 +217,19 @@ const Sources = (() => {
     return {
       forecast:  { wind: "11 mph S", text: "Partly cloudy until 3 PM today",
                    temp: 90, low: 61, high: 91, pop: 0, daily: "0%",
-                   icon: "partly", night: false, issued: "1 PM" },
+                   icon: "partly", night: false, issued: "1 PM",
+                   hours: [
+                     { label: "1 PM", temp: 90, icon: "partly", night: false, wind: 11 },
+                     { label: "2 PM", temp: 91, icon: "partly", night: false, wind: 10 },
+                     { label: "3 PM", temp: 91, icon: "clear",  night: false, wind: 8 },
+                     { label: "4 PM", temp: 89, icon: "clear",  night: false, wind: 7 },
+                     { label: "5 PM", temp: 86, icon: "clear",  night: false, wind: 6 }
+                   ],
+                   days: [
+                     { label: "Tomorrow", cond: "Clear",  icon: "clear",  lo: 62, hi: 93, pop: 0 },
+                     { label: "Mon 5",    cond: "Partly cloudy", icon: "partly", lo: 64, hi: 88, pop: 10 },
+                     { label: "Tue 6",    cond: "Storms", icon: "storm",  lo: 59, hi: 75, pop: 40 }
+                   ] },
       outdoor:   { temp: 89.9, diff: -2.8, trend: 3.6,
                    min: 60.7, minAt: "7:02 AM", max: 91.4, maxAt: "11:32 AM",
                    feels: 89.9, feelsText: "Feeling hot", humidity: 32, dew: 56.4 },
@@ -579,6 +619,35 @@ const Sources = (() => {
     const fIcon = iconToken((next && next.icon) || cc.icon || day.icon);
     const fNight = /night/.test(String((next && next.icon) || cc.icon || ""));
 
+    /* The strip: the next five hours from now, which is why it starts at
+       the current hour rather than at index 0 - the API returns the whole
+       day and the early entries are already past. */
+    const fHours = hourly
+      .filter((h) => h && h.time >= nowSecs)
+      .slice(0, 5)
+      .map((h) => ({
+        label: hourLabel(new Date(h.time * 1000)),
+        temp:  h.air_temperature === undefined ? null : Math.round(h.air_temperature),
+        icon:  iconToken(h.icon),
+        night: /night/.test(String(h.icon || "")),
+        wind:  h.wind_avg === undefined ? null : Math.round(h.wind_avg)
+      }));
+
+    /* The next three days, skipping today - today's high and low are
+       already on the Temperature panel, and repeating them here would
+       spend a third of the rows saying nothing new. */
+    const dailyAll = (fc && fc.forecast && fc.forecast.daily) || [];
+    const fDays = dailyAll
+      .slice(1, 4)
+      .map((d) => ({
+        label: dayLabel(new Date((d.day_start_local || 0) * 1000), now),
+        cond:  shortCond(d.conditions),
+        icon:  iconToken(d.icon),
+        lo:    d.air_temp_low  === undefined ? null : Math.round(d.air_temp_low),
+        hi:    d.air_temp_high === undefined ? null : Math.round(d.air_temp_high),
+        pop:   d.precip_probability === undefined ? 0 : Math.round(d.precip_probability)
+      }));
+
     return {
       forecast: {
         wind: next && next.wind_avg !== undefined
@@ -596,7 +665,9 @@ const Sources = (() => {
         daily: Math.round(pick(day.precip_probability, 0)) + "%",
         icon: fIcon,
         night: fNight,
-        issued: next ? clock(new Date(next.time * 1000)) : clock(now)
+        issued: next ? clock(new Date(next.time * 1000)) : clock(now),
+        hours: fHours,
+        days: fDays
       },
       outdoor: {
         temp: airTemp,
@@ -805,16 +876,52 @@ const Sources = (() => {
     const attrs = (id) => (byId[id] && byId[id].attributes) || {};
 
     // ── Forecast ────────────────────────────────────────────────────
-    let daily = null;
+    let daily = null, dailyList = [], hourlyList = [];
     if (E.weather) {
       try {
         const r = await api.post(
           "/api/services/weather/get_forecasts?return_response",
           { entity_id: E.weather, type: "daily" });
-        const list = ((r.service_response || {})[E.weather] || {}).forecast || [];
-        daily = list[0] || null;
+        dailyList = ((r.service_response || {})[E.weather] || {}).forecast || [];
+        daily = dailyList[0] || null;
       } catch (e) { /* forecast is optional; the panel degrades to dashes */ }
+
+      /* Hourly is a separate call and not every weather integration serves
+         it. Its own try/catch, so a backend that only does daily still
+         fills the day rows instead of emptying the whole panel. */
+      try {
+        const r = await api.post(
+          "/api/services/weather/get_forecasts?return_response",
+          { entity_id: E.weather, type: "hourly" });
+        hourlyList = ((r.service_response || {})[E.weather] || {}).forecast || [];
+      } catch (e) { /* no hourly from this integration */ }
     }
+
+    const fHours = hourlyList
+      .filter((h) => h && new Date(h.datetime) >= now)
+      .slice(0, 5)
+      .map((h) => {
+        const t = new Date(h.datetime);
+        return {
+          label: hourLabel(t),
+          temp:  h.temperature === undefined ? null : Math.round(h.temperature),
+          icon:  iconToken(h.condition),
+          night: String(h.condition || "") === "clear-night",
+          wind:  h.wind_speed === undefined ? null : Math.round(h.wind_speed)
+        };
+      });
+
+    const fDays = dailyList
+      .slice(1, 4)
+      .map((d) => ({
+        label: dayLabel(new Date(d.datetime), now),
+        cond:  shortCond(d.condition),
+        icon:  iconToken(d.condition),
+        lo:    d.templow     === undefined ? null : Math.round(d.templow),
+        hi:    d.temperature === undefined ? null : Math.round(d.temperature),
+        pop:   d.precipitation_probability == null
+                 ? 0 : Math.round(d.precipitation_probability)
+      }));
 
     const wx = attrs(E.weather);
     const fBearing = wx.wind_bearing;
@@ -910,7 +1017,9 @@ const Sources = (() => {
                 ? daily.precipitation + " in" : "0%",
         icon: iconToken(daily ? daily.condition : str(E.weather, "")),
         night: str(E.sun) === "below_horizon",
-        issued: clock(now)
+        issued: clock(now),
+        hours: fHours,
+        days: fDays
       },
       outdoor: {
         temp,

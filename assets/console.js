@@ -266,12 +266,63 @@ const ICONS = {
   wind:   () => WIND
 };
 
-function drawForecastIcon(token, night) {
+// One icon as an <svg>. Sized by the stylesheet rather than here, so the
+// hourly strip and the day rows can draw the same icon at two sizes.
+function iconSvg(token, night, label) {
   const build = ICONS[token] || ICONS.partly;
-  $("f-icon").innerHTML =
-    '<svg viewBox="0 0 64 60" style="width:min(100%,6.4em);height:auto" ' +
-    'role="img" aria-label="' + (token || "forecast") +
-    (night ? " at night" : "") + '">' + build(night) + '</svg>';
+  return '<svg viewBox="0 0 64 60" role="img" aria-label="' +
+         esc(label || token || "forecast") + (night ? " at night" : "") +
+         '">' + build(night) + '</svg>';
+}
+
+const esc = (t) => String(t == null ? "" : t)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+const dash = (v, suffix) =>
+  (v === null || v === undefined || Number.isNaN(v)) ? "\u2013" : v + (suffix || "");
+
+/* The next few hours, as a five-column strip. */
+function drawHours(hours) {
+  const list = Array.isArray(hours) ? hours : [];
+  if (!list.length) {
+    $("f-hours").innerHTML = '<div class="fh-h" style="grid-column:1/-1">' +
+                             'No hourly forecast</div>';
+    return;
+  }
+  $("f-hours").innerHTML = list.map((h) =>
+    '<div>' +
+      '<div class="fh-h">' + esc(h.label) + '</div>' +
+      '<div class="fh-i">' + iconSvg(h.icon, h.night, h.label) + '</div>' +
+      '<div class="fh-t">' + dash(h.temp, "\u00B0") + '</div>' +
+      '<div class="fh-w">' + dash(h.wind, " mph") + '</div>' +
+    '</div>').join("");
+}
+
+/* The next three days, one row each. The chance of rain is shown only
+   when there is one - a column of "0%" is noise, and its absence is the
+   same information. */
+function drawDays(days) {
+  const list = Array.isArray(days) ? days : [];
+  if (!list.length) {
+    $("f-days").innerHTML = '<div class="fd-c">No daily forecast</div>';
+    return;
+  }
+  $("f-days").innerHTML = list.map((d) =>
+    '<div class="fc-day">' +
+      '<div>' +
+        '<div class="fd-n">' + esc(d.label) + '</div>' +
+        '<div class="fd-c">' + esc(d.cond) +
+          (d.pop > 0 ? ' <span class="fd-pop">' + d.pop + '%</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="fd-i">' + iconSvg(d.icon, false, d.label) + '</div>' +
+      '<div class="fd-hl">' +
+        '<span class="fd-lo">' + dash(d.lo, "\u00B0") + '</span>' +
+        '<span class="dim"> / </span>' +
+        '<span class="fd-hi">' + dash(d.hi, "\u00B0") + '</span>' +
+      '</div>' +
+    '</div>').join("");
 }
 
 // ── Clock ─────────────────────────────────────────────────────────────
@@ -289,18 +340,8 @@ function render() {
         s = DATA.solar, r = DATA.rain, b = DATA.barometer,
         sg = DATA.sager, m = DATA.moon, l = DATA.lightning;
 
-  $("f-wind").textContent = f.wind;
-  $("f-text").textContent = f.text;
-  reading($("f-temp"), f.temp, F, 0);
-  band($("f-temp"), f.temp, TEMP_BANDS);
-  $("f-low").textContent   = f.low + F;
-  $("f-high").textContent  = f.high + F;
-  $("f-pop").textContent   = f.pop;
-  // The sources supply this with its own unit - a percentage from one, an
-  // inch total from another - so it is not given one here.
-  $("f-daily").textContent = f.daily;
-  $("f-issued").textContent = f.issued;
-  drawForecastIcon(f.icon, f.night);
+  drawHours(f.hours);
+  drawDays(f.days);
 
   reading($("t-outdoor"), o.temp, F);
   band($("t-outdoor"), o.temp, TEMP_BANDS);

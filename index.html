@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap">
 <!-- Bump ?v= on all five when you change any asset, or browsers and the
      Home Assistant iframe will keep serving the previous copy. -->
-<link rel="stylesheet" href="assets/console.css?v=8">
+<link rel="stylesheet" href="assets/console.css?v=9">
 </head>
 <body>
 
@@ -30,35 +30,12 @@
     <!-- ── Slot 1: Forecast / Sager / Moon / Lightning ───────── -->
     <section class="panel p-forecast" id="pane-forecast">
       <h2>Forecast</h2>
-      <div class="row r2">
-        <div class="stack">
-          <div class="label">Conditions</div>
-          <div class="center" id="f-icon"></div>
-        </div>
-        <div class="stack">
-          <div class="label">Wind</div>
-          <div class="center read small"><span class="whole" id="f-wind">11 mph S</span></div>
-          <div class="sub" id="f-text" style="margin-top:0.4em">Partly cloudy until 3 PM</div>
-        </div>
-      </div>
+      <!-- Both rows are built by console.js from forecast.hours and
+           forecast.days. A source that supplies neither leaves the panel
+           with its heading and a dash, rather than an empty box. -->
+      <div class="fc-hours" id="f-hours"></div>
       <div class="divider"></div>
-      <div class="row r2">
-        <div class="stack">
-          <div class="label">Temperature</div>
-          <div class="center read medium" id="f-temp"></div>
-          <div class="center stamp">
-            <span class="t-min">L <span id="f-low"></span></span>
-            &nbsp;·&nbsp;
-            <span class="t-max">H <span id="f-high"></span></span>
-          </div>
-        </div>
-        <div class="stack">
-          <div class="label">Chance of Rain</div>
-          <div class="center read medium"><span class="whole" id="f-pop">0</span><span class="unit">%</span></div>
-          <div class="center stamp">Daily <span id="f-daily">0%</span></div>
-        </div>
-      </div>
-      <div class="stamp right">Issued <span id="f-issued">1 PM</span></div>
+      <div class="fc-days" id="f-days"></div>
     </section>
 
     <section class="panel p-sager" id="pane-sager" hidden>
@@ -388,9 +365,9 @@
 <!-- Your own settings. Copy config.example.js to config.js and edit it.
      config.js is gitignored: it holds a token. Without it the console
      renders the built-in demo values. -->
-<script src="config.js?v=8" onerror="window.CONSOLE_CONFIG=window.CONSOLE_CONFIG||null"></script>
-<script src="assets/console.js?v=8"></script>
-<script src="assets/sources.js?v=8"></script>
-<script src="assets/main.js?v=8"></script>
+<script src="config.js?v=9" onerror="window.CONSOLE_CONFIG=window.CONSOLE_CONFIG||null"></script>
+<script src="assets/console.js?v=9"></script>
+<script src="assets/sources.js?v=9"></script>
+<script src="assets/main.js?v=9"></script>
 </body>
 </html>
