@@ -331,7 +331,12 @@ re-fetches the previous version.
 ```
 
 **Increment that number whenever you change a file under `assets/`,** in all
-five places `index.html` uses it. It is the only reliable way to get the new
+five places `index.html` uses it — **including when the previous version has
+already been deployed somewhere.** Shipping two different builds under the
+same `?v=` is the one failure this scheme cannot recover from: the browser
+holds the first build's assets, and no amount of bumping the *dashboard's*
+version reaches them, because the dashboard's number only re-fetches
+`index.html` while `index.html` keeps asking for the cached asset URLs. It is the only reliable way to get the new
 code into a browser, for two reasons that are easy to lose an afternoon to:
 
 - A hard reload (Ctrl+Shift+R) applies to the **top-level frame only**. Scripts
