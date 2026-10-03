@@ -211,10 +211,19 @@ function drawMoon() {
 /* The forecast icon was a single hardcoded partly-cloudy drawing, so it
    showed a sun at midnight. It now follows the condition token the source
    supplies, with day and night variants where the distinction matters. */
+// All eight rays. The cloud in the `partly` variant is drawn after the sun
+// and covers the lower-left ones, so a five-ray sun looked fine there - but
+// `clear` draws the sun alone and the missing side showed.
 const SUN = '<g stroke="#f0a050" stroke-width="3" stroke-linecap="round">' +
-  '<line x1="40" y1="2" x2="40" y2="9"/><line x1="56" y1="8" x2="51" y2="13"/>' +
-  '<line x1="62" y1="23" x2="55" y2="23"/><line x1="24" y1="8" x2="29" y2="13"/>' +
-  '<line x1="56" y1="38" x2="51" y2="33"/></g>' +
+  '<line x1="40" y1="2"  x2="40" y2="9"/>' +   /* top          */
+  '<line x1="56" y1="8"  x2="51" y2="13"/>' +  /* upper right  */
+  '<line x1="62" y1="23" x2="55" y2="23"/>' +  /* right        */
+  '<line x1="56" y1="38" x2="51" y2="33"/>' +  /* lower right  */
+  '<line x1="40" y1="44" x2="40" y2="37"/>' +  /* bottom       */
+  '<line x1="24" y1="38" x2="29" y2="33"/>' +  /* lower left   */
+  '<line x1="18" y1="23" x2="25" y2="23"/>' +  /* left         */
+  '<line x1="24" y1="8"  x2="29" y2="13"/>' +  /* upper left   */
+  '</g>' +
   '<circle cx="40" cy="23" r="9" fill="#f0a050"/>';
 
 // A crescent: the disc, with a second disc lifted out of its upper right.
